@@ -11,14 +11,18 @@
   "dependencies": {
     "@auth0/auth0-vue": "^2.5.0",
     "@auth0/universal-components-vue": "file:../../packages/vue/auth0-universal-components-vue-1.0.0-beta.1.tgz",
-    "vue": "^3.5.25"
+    "@tanstack/vue-query": "^5.92.9",
+    "tailwindcss": "^4.1.18",
+    "vue": "^3.5.28",
+    "vue-router": "^4.6.4"
   },
   "devDependencies": {
-    "@types/node": "^24.10.1",
-    "@vitejs/plugin-vue": "^6.0.2",
+    "@tailwindcss/postcss": "^4.1.18",
+    "@types/node": "^24.10.13",
+    "@vitejs/plugin-vue": "^6.0.4",
     "@vue/tsconfig": "^0.8.1",
     "typescript": "~5.9.3",
     "vite": "^7.3.1",
-    "vue-tsc": "^3.1.5"
+    "vue-tsc": "^3.2.4"
   }
 }
