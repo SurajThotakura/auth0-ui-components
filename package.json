@@ -21,6 +21,7 @@
     }
   },
   "scripts": {
+    "convert": "tsx tools/convert/src/index.ts component",
     "build": "turbo run build",
     "build:docs": "turbo run build --filter=auth0-ui-components-docs",
     "build:shadcn": "cd packages/react && pnpm registry:build && cp -r public/r ../../docs-site/public/",

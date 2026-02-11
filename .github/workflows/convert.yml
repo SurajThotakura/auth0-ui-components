@@ -1,0 +1,188 @@
+name: Framework Conversion
+
+on:
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component path (relative to packages/react/src)'
+        required: true
+        type: string
+      frameworks:
+        description: 'Target frameworks (comma-separated: vue, angular, svelte)'
+        required: true
+        default: 'vue'
+        type: string
+      create_pr:
+        description: 'Create a pull request'
+        required: false
+        default: true
+        type: boolean
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  # Handle /convert command in PR comments
+  parse-command:
+    if: github.event_name == 'issue_comment' && contains(github.event.comment.body, '/convert')
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.parse.outputs.should_run }}
+      component: ${{ steps.parse.outputs.component }}
+      frameworks: ${{ steps.parse.outputs.frameworks }}
+    steps:
+      - name: Parse /convert command
+        id: parse
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment.body;
+            const match = comment.match(/\/convert\s+(\S+)\s+to\s+([\w,]+)/i);
+
+            if (match) {
+              core.setOutput('should_run', 'true');
+              core.setOutput('component', match[1]);
+              core.setOutput('frameworks', match[2]);
+
+              // React to the comment
+              await github.rest.reactions.createForIssueComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: context.payload.comment.id,
+                content: 'rocket'
+              });
+            } else {
+              core.setOutput('should_run', 'false');
+            }
+
+  convert-from-dispatch:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          echo "Claude Code installed"
+
+      - name: Build convert tool
+        run: |
+          cd tools/convert
+          pnpm install
+          pnpm build
+
+      - name: Run conversion
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          node tools/convert/dist/index.js component \
+            --component "${{ inputs.component }}" \
+            --to "${{ inputs.frameworks }}" \
+            ${{ inputs.create_pr && '--pr' || '' }}
+
+      - name: Comment on success
+        if: success() && inputs.create_pr
+        uses: actions/github-script@v7
+        with:
+          script: |
+            console.log('Conversion completed successfully!');
+
+  convert-from-comment:
+    needs: parse-command
+    if: needs.parse-command.outputs.should_run == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Setup Claude Code
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npm install -g @anthropic-ai/claude-code
+          echo "Claude Code installed"
+
+      - name: Build convert tool
+        run: |
+          cd tools/convert
+          pnpm install
+          pnpm build
+
+      - name: Run conversion
+        id: convert
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          node tools/convert/dist/index.js component \
+            --component "${{ needs.parse-command.outputs.component }}" \
+            --to "${{ needs.parse-command.outputs.frameworks }}" \
+            --pr
+
+      - name: Comment on PR with result
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const component = '${{ needs.parse-command.outputs.component }}';
+            const frameworks = '${{ needs.parse-command.outputs.frameworks }}';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `✅ Conversion complete!\n\n**Component:** \`${component}\`\n**Frameworks:** ${frameworks}\n\nA new PR has been created with the converted components.`
+            });
+
+      - name: Comment on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const component = '${{ needs.parse-command.outputs.component }}';
+            const frameworks = '${{ needs.parse-command.outputs.frameworks }}';
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: `❌ Conversion failed!\n\n**Component:** \`${component}\`\n**Frameworks:** ${frameworks}\n\nPlease check the workflow logs for details.`
+            });
