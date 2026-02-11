@@ -204,6 +204,63 @@ For each converted component:
 
 ---
 
+## CRITICAL: React Parity Verification
+
+**⚠️ MANDATORY: After converting ANY component, you MUST verify parity with React.**
+
+### Verification Steps (Required Before PR)
+
+```bash
+# 1. Compare component counts
+ls packages/react/src/components/ui/ | wc -l
+ls packages/vue/src/components/ui/ | wc -l
+
+# 2. For each Vue component, verify React counterpart exists and matches
+# Example for TextField:
+diff <(grep -E "^(const|interface|export)" packages/react/src/components/ui/text-field.tsx) \
+     <(grep -E "^(const|interface|export)" packages/vue/src/components/ui/TextField.vue)
+```
+
+### Parity Checklist (Check ALL Items)
+
+| Item                          | How to Verify                                                |
+| ----------------------------- | ------------------------------------------------------------ |
+| **All props exist**           | Compare `interface Props` (React) with `defineProps<>` (Vue) |
+| **CVA strings identical**     | Diff the CVA variant strings character-by-character          |
+| **All subcomponents exist**   | If React has `Card` + `CardHeader`, Vue must have both       |
+| **Conditional classes match** | Check all `cn()` calls have same conditionals                |
+| **Event handlers converted**  | React `onClick` → Vue `@click` or `defineEmits`              |
+| **Adornment/slot handling**   | React `startAdornment` prop → Vue `#startAdornment` slot     |
+| **HTML attributes present**   | `data-slot`, `aria-*`, `type`, `disabled` all present        |
+
+### Known Parity Issues (Fixed)
+
+These were common issues found during conversion - verify they don't regress:
+
+1. **TextField.vue**: Missing `pl-[5px]`/`pr-[5px]` padding for adornments
+2. **Card.vue**: Missing subcomponents (`CardHeader`, `CardTitle`, `CardContent`, `CardFooter`, `CardAction`, `CardDescription`)
+3. **ColorPickerInput.vue**: Missing clickable color swatch button
+4. **ImagePreviewField.vue**: Missing `imgSizes`, `imgWidth`, `imgHeight`, `srcset` props
+5. **FormActions.vue**: Missing `onClick` handler for non-submit next button
+
+### Verification Commands
+
+```bash
+# Quick visual diff of a component
+vimdiff packages/react/src/components/ui/text-field.tsx packages/vue/src/components/ui/TextField.vue
+
+# Check all React UI components exist in Vue
+for f in packages/react/src/components/ui/*.tsx; do
+  base=$(basename "$f" .tsx)
+  vue_file="packages/vue/src/components/ui/${base^}.vue"
+  if [ ! -f "$vue_file" ]; then
+    echo "MISSING: $vue_file"
+  fi
+done
+```
+
+---
+
 ## UI Consistency Checklist
 
 Before merging any Vue component:
@@ -213,6 +270,7 @@ Before merging any Vue component:
 - [ ] All spacing matches React Tailwind classes
 - [ ] All colors use same CSS variables
 - [ ] Interactive states (hover, focus, disabled) match React
+- [ ] **React parity verification completed (see above)**
 
 ---
 

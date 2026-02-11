@@ -238,6 +238,60 @@ ls packages/vue/src/types/injection-keys.ts
 
 ---
 
+## CRITICAL: React Parity Verification
+
+**⚠️ After converting ANY component, you MUST verify parity with React.**
+
+Vue components are incomplete if they don't match their React counterparts exactly.
+
+### Verification Commands
+
+```bash
+# List React UI components
+ls packages/react/src/components/ui/
+
+# List Vue UI components
+ls packages/vue/src/components/ui/
+
+# Compare a specific component (example: text-field)
+cat packages/react/src/components/ui/text-field.tsx
+cat packages/vue/src/components/ui/TextField.vue
+```
+
+### Component Parity Checklist
+
+For EACH converted component, verify:
+
+| Check                   | Description                                                    |
+| ----------------------- | -------------------------------------------------------------- |
+| **Props**               | All React props have Vue equivalents (props or slots)          |
+| **CVA strings**         | Copy CVA strings EXACTLY - character for character             |
+| **Subcomponents**       | If React has `Card`, `CardHeader`, etc., Vue must have all     |
+| **Class utilities**     | `cn()` calls match React patterns                              |
+| **Conditional classes** | All conditional styling matches (adornments, states)           |
+| **Event handlers**      | All React handlers have Vue `@event` or `defineEmits`          |
+| **Slot equivalents**    | React `children`, `startAdornment` → Vue `<slot>`, named slots |
+| **HTML attributes**     | `data-slot`, `aria-*`, `type`, etc. all present                |
+
+### Common Missing Items to Check
+
+1. **TextField**: Padding adjustments for `startAdornment`/`endAdornment`
+2. **Card**: Subcomponents (`CardHeader`, `CardTitle`, `CardContent`, etc.)
+3. **ColorPickerInput**: Native color picker fallback, clickable swatch
+4. **ImagePreviewField**: `imgSizes`, `imgWidth`, `imgHeight`, `srcset`
+5. **FormActions**: `onClick` handler for non-submit buttons
+
+### Verification Process
+
+1. Read React component source
+2. Read Vue component source
+3. Diff the props/interface definitions
+4. Diff the CVA variant strings
+5. Diff the template/JSX structure
+6. Test visually in example app
+
+---
+
 ## What NOT to Duplicate from React
 
 These come from `@auth0/universal-components-core`:
@@ -261,6 +315,44 @@ These come from `@auth0/universal-components-core`:
 | `Type 'X' is not assignable`     | Check type definitions    |
 | `Cannot find name 'defineProps'` | Add `lang="ts"` to script |
 | Module has no exported member    | Use `import type { X }`   |
+
+---
+
+## CRITICAL: Tailwind v4 @source Directive
+
+**⚠️ Example apps MUST include an `@source` directive for Tailwind class detection.**
+
+Tailwind v4 auto-detection excludes `node_modules` by default. Since the Vue package is installed from npm/tarball into `node_modules`, Tailwind won't detect the utility classes used in Vue components without explicit configuration.
+
+### Required in Example App's style.css
+
+```css
+@import 'tailwindcss';
+@import '@auth0/universal-components-vue/styles';
+
+/* CRITICAL: Tell Tailwind to scan Vue package components */
+/* This MUST come AFTER @import statements to avoid CSS parser errors */
+@source "../node_modules/@auth0/universal-components-vue/src/**/*.vue";
+
+:root {
+  /* shadcn theme variables */
+}
+```
+
+**Important:** The `@source` directive must come AFTER all `@import` statements. Placing it before will cause a CSS parser error: `@import must precede all other statements`.
+
+### Without @source Directive
+
+- Utility classes like `shadow-input-resting`, `bg-input-muted` won't be generated
+- Inputs will appear without borders/shadows
+- Components will look visually broken
+
+### Verification
+
+```bash
+# Check if @source is present
+grep "@source" examples/vue/src/style.css
+```
 
 ---
 

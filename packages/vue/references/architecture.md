@@ -140,6 +140,21 @@ cp -r packages/react/src/styles packages/vue/src/styles
 
 ---
 
+## Utility Functions
+
+### cn() utility (`src/lib/utils.ts`)
+
+```typescript
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
+```
+
+---
+
 ## Entry Points
 
 ### SPA Mode (`src/index.ts`)
@@ -180,7 +195,65 @@ export type * from './types';
 
 ---
 
-## TypeScript Configuration
+## Package Configuration (package.json)
+
+```json
+{
+  "name": "@auth0/universal-components-vue",
+  "version": "1.0.0-beta.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./proxy": {
+      "types": "./dist/proxy.d.ts",
+      "import": "./dist/proxy.mjs",
+      "require": "./dist/proxy.js"
+    },
+    "./styles": "./src/styles/globals.css"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "type-check": "vue-tsc --noEmit",
+    "test": "vitest",
+    "test:watch": "vitest --watch"
+  },
+  "dependencies": {
+    "@auth0/universal-components-core": "workspace:*",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.0",
+    "reka-ui": "^2.0.0",
+    "tailwind-merge": "^2.2.0"
+  },
+  "peerDependencies": {
+    "@auth0/auth0-vue": "^2.5.0",
+    "@tanstack/vue-query": "^5.0.0",
+    "@vee-validate/zod": "^4.15.0",
+    "vee-validate": "^4.15.0",
+    "vue": "^3.5.0",
+    "zod": "^3.24.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^5.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vite": "^5.0.0",
+    "vitest": "^2.0.0",
+    "vue-tsc": "^2.0.0"
+  }
+}
+```
+
+---
+
+## TypeScript Configuration (tsconfig.json)
 
 ```json
 {

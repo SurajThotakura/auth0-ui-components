@@ -155,9 +155,22 @@ export async function generateConversionPrompt(
 **Source:** \`packages/react/src/${componentPath}\`${relatedFilesSection}
 **Output:** \`${outputDir}/\`
 
-**Instructions:**
-1. Read \`packages/vue/SKILL.md\` for conversion patterns
-2. Convert all files in the source directory to Vue
+## Pre-flight Checklist (MUST verify before converting)
+
+Check these files exist. If ANY is missing, create it first using \`packages/vue/references/\` as guide:
+
+1. \`packages/vue/package.json\` → see \`references/architecture.md\`
+2. \`packages/vue/tsconfig.json\` → see \`references/architecture.md\`
+3. \`packages/vue/src/types/injection-keys.ts\` → see \`references/injection-keys.md\`
+4. \`packages/vue/src/providers/Auth0ComponentProvider.vue\` → see \`references/providers.md\`
+5. \`packages/vue/src/providers/Auth0ProxyComponentProvider.vue\` → see \`references/providers.md\`
+6. \`packages/vue/src/lib/utils.ts\` (cn utility) → see \`references/architecture.md\`
+7. \`packages/vue/src/styles/\` directory → copy from \`packages/react/src/styles/\`
+
+## Conversion Steps
+
+1. Read \`packages/vue/SKILL.md\` for patterns
+2. Convert all source files to Vue
 3. Update barrel exports (index.ts)
 4. Run \`cd packages/vue && pnpm type-check\` and fix errors
 `;

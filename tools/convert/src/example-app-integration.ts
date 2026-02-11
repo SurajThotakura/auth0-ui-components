@@ -272,11 +272,19 @@ const { isLoading } = useAuth0();
     await writeFile(join(exampleAppPath, 'src', 'App.vue'), appVue);
 
     // Create src/style.css
-    const styleCss = `/* Import package styles */
+    // IMPORTANT: @source must come AFTER @import statements to avoid CSS parser errors
+    const styleCss = `@import 'tailwindcss';
 @import '@auth0/universal-components-vue/styles';
 
-/* Or if using local build: */
-/* @import '../../packages/vue/dist/styles.css'; */
+/* Tell Tailwind to scan Vue package components for class detection */
+/* This MUST come after @import statements */
+@source "../node_modules/@auth0/universal-components-vue/src/**/*.vue";
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+}
 `;
     await writeFile(join(exampleAppPath, 'src', 'style.css'), styleCss);
 
