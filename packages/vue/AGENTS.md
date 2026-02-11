@@ -49,7 +49,6 @@ See `references/providers.md` for complete provider implementations.
 - **Purpose:** Vue 3 port of Auth0 UI component library
 - **Runtime:** Node 18+, ESM, TypeScript, Vue 3.5+
 - **UI Pattern:** [shadcn-vue](https://www.shadcn-vue.com)
-- **Status:** POC — targeting OrganizationDetailsEdit feature
 
 ---
 
@@ -109,26 +108,24 @@ packages/vue/
     │   ├── use-scope-manager.ts
     │   ├── use-toast.ts
     │   ├── index.ts
-    │   └── my-organization/
+    │   └── <feature>/          # Feature-specific composables
     │
     ├── components/
-    │   ├── ui/           # FLAT structure
+    │   ├── ui/                 # FLAT structure
     │   │   ├── Button.vue
     │   │   ├── Card.vue
     │   │   ├── TextField.vue
-    │   │   ├── Spinner.vue
     │   │   └── index.ts
-    │   ├── my-organization/
+    │   ├── <feature>/          # Feature components
     │   ├── WithOrganizationService.vue
     │   └── WithAccountService.vue
     │
     ├── blocks/
-    │   └── my-organization/
-    │       └── organization-management/
+    │   └── <feature>/          # Entry points with scope gating
     │
     ├── types/
     │   ├── injection-keys.ts
-    │   └── my-organization/
+    │   └── <feature>/          # Feature-specific types
     │
     └── styles/           # SHARED with React
         ├── globals.css
@@ -168,33 +165,22 @@ packages/vue/
 
 ### Phase 3: Composables
 
-- [ ] `use-core-client.ts`
-- [ ] `use-translator.ts`
-- [ ] `use-theme.ts`
-- [ ] `use-scope-manager.ts`
-- [ ] `use-toast.ts`
-- [ ] Feature composables (e.g., `use-organization-details-edit.ts`)
+- [ ] Core composables (`use-core-client.ts`, `use-translator.ts`, `use-theme.ts`, etc.)
+- [ ] Feature-specific composables as needed
 
 ### Phase 4: UI Components
 
-- [ ] `Button.vue` — Primitive + CVA
-- [ ] `Spinner.vue`
-- [ ] `Card.vue`, `CardHeader.vue`, `CardContent.vue`, `CardFooter.vue`
-- [ ] `TextField.vue` — with adornments
-- [ ] `FormActions.vue`
-- [ ] `Separator.vue`, `Section.vue`, `Header.vue`
-- [ ] `components/ui/index.ts` — single barrel export
+- [ ] Convert UI primitives from React (`Button`, `Card`, `TextField`, etc.)
+- [ ] Single barrel export in `components/ui/index.ts`
 
 ### Phase 5: Feature Components
 
-- [ ] `OrganizationDetails.vue`
-- [ ] `SettingsDetails.vue`
-- [ ] `BrandingDetails.vue`
-- [ ] `WithOrganizationService.vue`
+- [ ] Convert feature components from React source
+- [ ] Service wrappers (`WithOrganizationService.vue`, etc.)
 
 ### Phase 6: Blocks
 
-- [ ] `OrganizationDetailsEdit.vue` — entry point with scope gating
+- [ ] Convert block entry points with scope gating
 
 ### Phase 7: Validation
 
@@ -222,12 +208,11 @@ For each converted component:
 
 Before merging any Vue component:
 
-- [ ] **ImagePreviewField**: Has preview area with empty/invalid/loaded states
-- [ ] **ColorPickerInput**: Color swatch inside input field
-- [ ] **FormActions**: Discard button uses `invisible` (not `hidden`)
-- [ ] **All text**: Matches React i18n keys
-- [ ] **All spacing**: Matches React Tailwind classes
-- [ ] **All colors**: Uses same CSS variables
+- [ ] Visual appearance matches React exactly
+- [ ] All text matches React i18n keys
+- [ ] All spacing matches React Tailwind classes
+- [ ] All colors use same CSS variables
+- [ ] Interactive states (hover, focus, disabled) match React
 
 ---
 
@@ -323,138 +308,4 @@ Before merging any Vue component:
 
 **For code patterns, see `SKILL.md` and `references/` folder.**
 
----
-
-## Example App Setup (vue-spa-npm) — MANDATORY
-
-When setting up the Vue example app at `examples/vue-spa-npm/`, these patterns are **NON-NEGOTIABLE**:
-
-### Auth0 Vue SDK Workarounds
-
-The `@auth0/auth0-vue` SDK has limitations. Apply these fixes:
-
-#### 1. Auth0ComponentProvider Configuration
-
-**ALWAYS configure the provider exactly like this:**
-
-```vue
-<!-- src/App.vue -->
-<Auth0ComponentProvider
-  :auth-details="{
-    domain: 'devex.ca.auth0.com',
-  }"
-  :i18n="{ currentLanguage: 'en' }"
-  :theme-settings="{
-    theme: 'default',
-    mode: 'light',
-  }"
->
-  <!-- app content -->
-</Auth0ComponentProvider>
-```
-
-**Critical points:**
-
-- `:auth-details` with `domain` is REQUIRED
-- `:i18n` must be hardcoded to `'en'` — NOT a computed value
-- Do NOT use `useI18n()` for the provider's i18n prop
-
-#### 2. Use Mock Data (Not Live API)
-
-Use `OrganizationDetails` component with mock data instead of `OrganizationDetailsEdit`:
-
-```vue
-<!-- src/views/OrganizationManagementPage.vue -->
-<script setup lang="ts">
-import type { OrganizationPrivate } from '@auth0/universal-components-core';
-import { OrganizationDetails } from '@auth0/universal-components-vue';
-import type { OrganizationDetailsFormActions } from '@auth0/universal-components-vue';
-import { ref } from 'vue';
-
-const mockOrganization = ref<OrganizationPrivate>({
-  id: 'org_a11y123456789',
-  name: 'a11y-corp',
-  display_name: 'A11y Corporation',
-  branding: {
-    logo_url: 'https://cdn.auth0.com/avatars/au.png',
-    colors: {
-      primary: '#EB5424',
-      page_background: '#000000',
-    },
-  },
-});
-
-const formActions: OrganizationDetailsFormActions = {
-  isLoading: false,
-  showPrevious: true,
-  showUnsavedChanges: true,
-  align: 'right',
-  previousAction: {
-    disabled: false,
-    onClick: () => console.log('Cancel clicked'),
-  },
-  nextAction: {
-    disabled: false,
-    onClick: async (data: OrganizationPrivate) => {
-      console.log('Save clicked', data);
-      mockOrganization.value = { ...mockOrganization.value, ...data };
-      return true;
-    },
-  },
-};
-</script>
-
-<template>
-  <div class="p-6 space-y-6">
-    <div class="mx-auto max-w-4xl">
-      <h2 class="text-2xl font-bold text-gray-900 mb-6">Organization Details</h2>
-      <OrganizationDetails
-        :organization="mockOrganization"
-        :form-actions="formActions"
-        :read-only="false"
-      />
-    </div>
-  </div>
-</template>
-```
-
-#### 3. Required Dependencies
-
-The example app `package.json` MUST include `@auth0/universal-components-core`:
-
-```json
-{
-  "dependencies": {
-    "@auth0/auth0-vue": "^2.5.0",
-    "@auth0/universal-components-core": "workspace:*",
-    "@auth0/universal-components-vue": "workspace:*",
-    "@tanstack/vue-query": "^5.90.21",
-    "vue": "^3.5.13",
-    "vue-router": "^4.5.0",
-    "vue-sonner": "^2.0.0"
-  }
-}
-```
-
-### Example App Verification Checklist
-
-**Run these checks before considering the example app complete:**
-
-- [ ] `App.vue` has `Auth0ComponentProvider` with `:auth-details="{ domain: 'devex.ca.auth0.com' }"`
-- [ ] `App.vue` has `:i18n="{ currentLanguage: 'en' }"` (hardcoded string, NOT computed)
-- [ ] `App.vue` does NOT import `useI18n` or use `computed` for i18n
-- [ ] `OrganizationManagementPage.vue` uses `OrganizationDetails` (NOT `OrganizationDetailsEdit`)
-- [ ] `OrganizationManagementPage.vue` has mock data with proper types
-- [ ] `package.json` includes `@auth0/universal-components-core` as dependency
-- [ ] Type imports: `import type { OrganizationPrivate } from '@auth0/universal-components-core'`
-- [ ] Type imports: `import type { OrganizationDetailsFormActions } from '@auth0/universal-components-vue'`
-- [ ] `pnpm type-check` passes in example app directory
-
-### Common Example App Errors
-
-| Error                                                   | Cause                   | Fix                                          |
-| ------------------------------------------------------- | ----------------------- | -------------------------------------------- |
-| `Cannot find module '@auth0/universal-components-core'` | Missing dependency      | Add to `package.json` dependencies           |
-| Type mismatch on `formActions`                          | Missing type annotation | Add `: OrganizationDetailsFormActions`       |
-| Type mismatch on `mockOrganization`                     | Missing generic         | Use `ref<OrganizationPrivate>(...)`          |
-| Provider props type error                               | Using computed for i18n | Hardcode `:i18n="{ currentLanguage: 'en' }"` |
+**For example app setup, see `references/example-app.md`.**

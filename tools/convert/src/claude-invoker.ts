@@ -116,115 +116,50 @@ export async function generateConversionPrompt(
   const repoRoot = options.workingDir || getRepoRoot();
   const { componentPath, targetFramework } = options;
 
-  const componentName = basename(componentPath, '.tsx');
   const reactSourcePath = join(repoRoot, 'packages/react/src', componentPath);
 
-  // Read the React component source
-  let reactSource: string;
-  try {
-    reactSource = await readFile(reactSourcePath, 'utf-8');
-  } catch {
+  // Verify source file exists
+  if (!existsSync(reactSourcePath)) {
     return {
       success: false,
-      error: `Could not read React component at ${reactSourcePath}`,
+      error: `React component not found at ${reactSourcePath}`,
     };
   }
 
   // Find related files in the same directory
   const relatedFiles = await findRelatedFiles(componentPath, repoRoot);
 
-  // Determine output path based on component type
+  // Determine output directory (folder containing the component)
+  const componentDir = dirname(componentPath);
   let outputDir: string;
   if (componentPath.startsWith('blocks/')) {
-    outputDir = `packages/${targetFramework}/src/blocks/${componentPath.replace('blocks/', '').replace('.tsx', '')}`;
+    outputDir = `packages/${targetFramework}/src/${componentDir}`;
   } else if (componentPath.startsWith('components/')) {
-    outputDir = `packages/${targetFramework}/src/components/${componentPath.replace('components/', '').replace('.tsx', '')}`;
+    outputDir = `packages/${targetFramework}/src/${componentDir}`;
   } else if (componentPath.startsWith('hooks/')) {
-    outputDir = `packages/${targetFramework}/src/composables/${componentPath.replace('hooks/', 'use-').replace('.tsx', '.ts').replace('.ts', '')}`;
+    outputDir = `packages/${targetFramework}/src/composables`;
   } else {
-    outputDir = `packages/${targetFramework}/src/${componentPath.replace('.tsx', '')}`;
+    outputDir = `packages/${targetFramework}/src/${componentDir}`;
   }
 
-  // Build related files section
+  // Build related files section (just paths, Claude can read them)
   let relatedFilesSection = '';
   if (relatedFiles.length > 0) {
     relatedFilesSection = `
-
-## Related Files in Same Directory
-
-The following files are in the same directory and should also be converted:
-
-${relatedFiles
-  .map(
-    (file) => `### ${file.name}
-
-\`\`\`tsx
-${file.content}
-\`\`\`
-`,
-  )
-  .join('\n')}
-
-**Important:** Convert ALL related files together. They are likely imported by the main component.
+**Related files to convert:** ${relatedFiles.map((f) => f.name).join(', ')}
 `;
   }
 
-  const prompt = `# React → Vue Component Conversion Task
+  const prompt = `Convert React component to Vue.
 
-## Source Component
-**File:** \`packages/react/src/${componentPath}\`
-**Component Name:** ${componentName}
+**Source:** \`packages/react/src/${componentPath}\`${relatedFilesSection}
+**Output:** \`${outputDir}/\`
 
-## Target
-**Framework:** ${targetFramework}
-**Output Path:** \`${outputDir}.vue\` (or appropriate Vue structure)
-
-## Instructions
-
-1. **Read the SKILL.md and references** in \`packages/vue/\` to understand Vue conversion patterns
-2. **Convert the React component** to Vue following these rules:
-   - Use \`<script setup lang="ts">\` (never Options API)
-   - Convert React hooks to Vue composables
-   - Convert JSX to Vue template syntax
-   - Use \`defineEmits\` for events (not callback props)
-   - Use \`reka-ui\` \`Primitive\` for polymorphic components
-   - Copy CVA variant strings exactly from React
-
-3. **Create the Vue component** at the appropriate path:
-   - For blocks: \`packages/vue/src/blocks/...\`
-   - For components: \`packages/vue/src/components/...\`
-   - For hooks: \`packages/vue/src/composables/...\` (rename to \`use-*.ts\`)
-
-4. **Also create/update:**
-   - Any required composables
-   - The corresponding types file
-   - Update barrel exports (index.ts)
-
-5. **Validate the conversion:**
-   - Run \`cd packages/vue && pnpm type-check\`
-   - Fix any TypeScript errors
-
-## React Source Code
-
-\`\`\`tsx
-${reactSource}
-\`\`\`
-${relatedFilesSection}
-## Conversion Checklist
-- [ ] Uses \`<script setup lang="ts">\`
-- [ ] All \`useState\` → \`ref()\`
-- [ ] All \`useMemo\` → \`computed()\`
-- [ ] All \`useEffect\` → \`watch()\` / \`onMounted()\`
-- [ ] All \`useContext\` → \`inject()\`
-- [ ] All callback props → \`defineEmits\`
-- [ ] JSX conditionals → \`v-if\`
-- [ ] JSX lists → \`v-for\`
-- [ ] \`className\` → \`class\`
-- [ ] CVA strings copied exactly
-- [ ] \`data-slot\` attribute preserved
-- [ ] Passes \`pnpm type-check\`
-
-Please proceed with the conversion.
+**Instructions:**
+1. Read \`packages/vue/SKILL.md\` for conversion patterns
+2. Convert all files in the source directory to Vue
+3. Update barrel exports (index.ts)
+4. Run \`cd packages/vue && pnpm type-check\` and fix errors
 `;
 
   // Save prompt to file
@@ -280,135 +215,28 @@ export async function generateIntegrationPrompt(
 
   const componentName = basename(componentPath, '.tsx');
   const kebabName = componentName.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
-  const displayName = componentName.replace(/([A-Z])/g, ' $1').trim();
 
   let prompt: string;
 
   if (!exampleAppExists) {
-    // Include scaffolding instructions
-    prompt = `# Example App Scaffolding + Component Integration
+    prompt = `Scaffold Vue example app and integrate component.
 
-## Task
-Create the Vue example app and integrate the converted ${componentName} component.
-
-## Step 1: Scaffold the Example App
-
-Create \`examples/vue/\` based on the React SPA example at \`examples/react-spa-npm/\`.
-
-**Structure to create:**
-\`\`\`
-examples/vue/
-├── package.json           # Vue deps, link to local Vue package
-├── vite.config.ts         # Vue plugin, @ alias
-├── tsconfig.json          # Vue-specific tsconfig
-├── postcss.config.mjs     # Tailwind v4 postcss
-├── index.html
-├── .env.example           # Auth0 config template
-└── src/
-    ├── main.ts            # createApp, router, Auth0, VueQuery
-    ├── App.vue            # Auth0ComponentProvider wrapper
-    ├── style.css          # Import package styles
-    ├── config/
-    │   └── env.ts         # Auth0 config from env vars
-    ├── router/
-    │   └── index.ts       # Vue Router setup
-    ├── components/
-    │   └── NavBar.vue     # Login/logout, nav links
-    └── views/
-        └── HomePage.vue   # Landing page
-\`\`\`
-
-**Reference:** Look at \`examples/react-spa-npm/\` for:
-- Auth0 configuration pattern (domain, clientId, audience)
-- Routing structure
-- NavBar with login/logout buttons
-- Component integration pattern
-
-**Key differences from React:**
-- Use \`@auth0/auth0-vue\` instead of \`@auth0/auth0-react\`
-- Use \`createAuth0()\` plugin instead of Auth0Provider
-- Use \`@auth0/universal-components-vue\` linked to local tarball
-- Router must be installed BEFORE Auth0 plugin
-
-## Step 2: Integrate the Component
-
-After scaffolding, integrate ${componentName}:
-
-1. **Create view:** \`src/views/${componentName}Page.vue\`
-   \`\`\`vue
-   <script setup lang="ts">
-   import { ${componentName} } from '@auth0/universal-components-vue';
-   </script>
-
-   <template>
-     <div class="max-w-3xl">
-       <${componentName} />
-     </div>
-   </template>
-   \`\`\`
-
-2. **Add route:** In \`src/router/index.ts\`
-   \`\`\`typescript
-   {
-     path: '/${kebabName}',
-     name: '${kebabName}',
-     component: () => import('@/views/${componentName}Page.vue'),
-     beforeEnter: createAuthGuard(),
-   }
-   \`\`\`
-
-3. **Add nav link:** In \`src/components/NavBar.vue\`
-   \`\`\`vue
-   <RouterLink v-if="isAuthenticated" to="/${kebabName}" class="...">
-     ${displayName}
-   </RouterLink>
-   \`\`\`
-
-## Step 3: Test
-
-1. Copy \`.env.example\` to \`.env\` and fill in Auth0 credentials
-2. Run \`cd examples/vue && pnpm install && pnpm dev\`
-3. Verify component renders at \`http://localhost:5173/${kebabName}\`
-
-Please proceed with scaffolding and integration.
+1. Create \`examples/vue/\` based on \`examples/react-spa-npm/\` (Vue equivalents)
+2. Read \`packages/vue/SKILL.md\` "Example App Setup" section for patterns
+3. Add view for ${componentName} at route \`/${kebabName}\`
+4. Add nav link in NavBar.vue
+5. Test: \`cd examples/vue && pnpm dev\` → http://localhost:5173/${kebabName}
 `;
   } else {
-    // Just integration instructions
-    prompt = `# Example App Integration
+    prompt = `Integrate component into Vue example app.
 
-## Task
-Integrate the converted ${componentName} component into the Vue example app.
+**Component:** ${componentName}
+**Route:** \`/${kebabName}\`
 
-## Steps
-
-1. **Create view:** \`examples/vue/src/views/${componentName}Page.vue\`
-   \`\`\`vue
-   <script setup lang="ts">
-   import { ${componentName} } from '@auth0/universal-components-vue';
-   </script>
-
-   <template>
-     <div class="max-w-3xl">
-       <${componentName} />
-     </div>
-   </template>
-   \`\`\`
-
-2. **Add route:** In \`examples/vue/src/router/index.ts\`
-   - Import the view component
-   - Add route with path \`/${kebabName}\`
-   - Use \`createAuthGuard()\` for auth protection
-
-3. **Add nav link:** In \`examples/vue/src/components/NavBar.vue\`
-   - Add RouterLink to \`/${kebabName}\`
-   - Show only when authenticated
-
-4. **Test:**
-   - Run \`cd examples/vue && pnpm dev\`
-   - Navigate to \`http://localhost:5173/${kebabName}\`
-   - Verify component renders correctly
-
-Please proceed with the integration.
+1. Create \`examples/vue/src/views/${componentName}Page.vue\`
+2. Add route in \`examples/vue/src/router/index.ts\`
+3. Add nav link in \`examples/vue/src/components/NavBar.vue\`
+4. Test: \`cd examples/vue && pnpm dev\` → http://localhost:5173/${kebabName}
 `;
   }
 

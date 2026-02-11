@@ -288,15 +288,88 @@ import { OrganizationDetailsEdit } from '@auth0/universal-components-vue';
 
 ---
 
+## Auth0 Vue SDK Limitations
+
+The `@auth0/auth0-vue` SDK has limitations that require workarounds:
+
+### 1. Always pass `auth-details` with domain
+
+```vue
+<Auth0ComponentProvider
+  :auth-details="{ domain: 'devex.ca.auth0.com' }"
+  :i18n="{ currentLanguage: 'en' }"
+  :theme-settings="{ theme: 'default', mode: 'light' }"
+>
+```
+
+### 2. Hardcode i18n language
+
+```typescript
+// ❌ WRONG - causes issues
+const { locale } = useI18n();
+const currentLanguage = computed(() => locale.value);
+
+// ✅ CORRECT - hardcode the value
+:i18n="{ currentLanguage: 'en' }"
+```
+
+### 3. Use mock data for development
+
+Due to Auth0 API limitations in development, use presentation components with mock data:
+
+```vue
+<script setup lang="ts">
+import type { OrganizationPrivate } from '@auth0/universal-components-core';
+import { OrganizationDetails } from '@auth0/universal-components-vue';
+import { ref } from 'vue';
+
+const mockOrganization = ref<OrganizationPrivate>({
+  id: 'org_123',
+  name: 'acme-corp',
+  display_name: 'Acme Corporation',
+  branding: {
+    logo_url: 'https://cdn.auth0.com/avatars/au.png',
+    colors: { primary: '#EB5424', page_background: '#000000' },
+  },
+});
+</script>
+
+<template>
+  <OrganizationDetails :organization="mockOrganization" :read-only="false" />
+</template>
+```
+
+---
+
+## Dependencies
+
+The example app `package.json` MUST include `@auth0/universal-components-core` for type imports:
+
+```json
+{
+  "dependencies": {
+    "@auth0/auth0-vue": "^2.5.0",
+    "@auth0/universal-components-core": "workspace:*",
+    "@auth0/universal-components-vue": "workspace:*",
+    "@tanstack/vue-query": "^5.0.0",
+    "vue": "^3.5.0",
+    "vue-router": "^4.4.0",
+    "vue-sonner": "^2.0.0"
+  }
+}
+```
+
+---
+
 ## Integration Checklist
 
-When adding a new converted component to the example app:
-
-1. **Create view component** in `src/views/`
-2. **Add route** in `router/index.ts`
-3. **Add NavBar link** in `components/NavBar.vue`
-4. **Import block** from the Vue package
-5. **Test preview** at corresponding route
+- [ ] `Auth0ComponentProvider` has `:auth-details="{ domain: '...' }"`
+- [ ] `Auth0ComponentProvider` has `:i18n="{ currentLanguage: 'en' }"` (hardcoded)
+- [ ] Uses presentation components with mock data for development
+- [ ] `package.json` includes `@auth0/universal-components-core`
+- [ ] View component created in `src/views/`
+- [ ] Route added in `router/index.ts` with `createAuthGuard()`
+- [ ] NavBar link added
 
 ---
 

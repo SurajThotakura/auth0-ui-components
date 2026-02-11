@@ -136,7 +136,7 @@ The CLI detects `branding-details.tsx` and `settings-details.tsx` automatically 
 3. Entry points           ← index.ts, proxy.ts
 4. Composables            ← use-*.ts files
 5. UI Components          ← Button, Card, etc.
-6. Feature Components     ← OrganizationDetails
+6. Feature Components     ← Domain-specific components
 7. Blocks                 ← Entry points with scope gating
 8. Build validation       ← pnpm type-check && pnpm build
 ```
@@ -264,130 +264,10 @@ These come from `@auth0/universal-components-core`:
 
 ---
 
-## Example App Setup (vue-spa-npm)
-
-When creating or updating the Vue example app, follow these MANDATORY patterns:
-
-### Auth0 Vue SDK Limitations
-
-The `@auth0/auth0-vue` SDK has limitations that require workarounds:
-
-1. **ALWAYS pass `auth-details` with domain** to `Auth0ComponentProvider`:
-
-```vue
-<Auth0ComponentProvider
-  :auth-details="{
-    domain: 'devex.ca.auth0.com'
-  }"
-  :i18n="{ currentLanguage: 'en' }"
-  :theme-settings="{
-    theme: 'default',
-    mode: 'light',
-  }"
->
-```
-
-2. **Hardcode i18n to `'en'`** — do NOT use computed values from `useI18n()`:
-
-```typescript
-// ❌ WRONG - causes issues with Auth0 Vue SDK
-const { locale } = useI18n();
-const currentLanguage = computed(() => locale.value);
-// :i18n="{ currentLanguage }"
-
-// ✅ CORRECT - hardcode the value
-// :i18n="{ currentLanguage: 'en' }"
-```
-
-### Use Mock Data for Components
-
-Due to Auth0 API limitations in development, use `OrganizationDetails` with mock data instead of `OrganizationDetailsEdit`:
-
-```vue
-<script setup lang="ts">
-import type { OrganizationPrivate } from '@auth0/universal-components-core';
-import { OrganizationDetails } from '@auth0/universal-components-vue';
-import type { OrganizationDetailsFormActions } from '@auth0/universal-components-vue';
-import { ref } from 'vue';
-
-const mockOrganization = ref<OrganizationPrivate>({
-  id: 'org_a11y123456789',
-  name: 'a11y-corp',
-  display_name: 'A11y Corporation',
-  branding: {
-    logo_url: 'https://cdn.auth0.com/avatars/au.png',
-    colors: {
-      primary: '#EB5424',
-      page_background: '#000000',
-    },
-  },
-});
-
-const formActions: OrganizationDetailsFormActions = {
-  isLoading: false,
-  showPrevious: true,
-  showUnsavedChanges: true,
-  align: 'right',
-  previousAction: {
-    disabled: false,
-    onClick: () => console.log('Cancel clicked'),
-  },
-  nextAction: {
-    disabled: false,
-    onClick: async (data: OrganizationPrivate) => {
-      console.log('Save clicked', data);
-      mockOrganization.value = { ...mockOrganization.value, ...data };
-      return true;
-    },
-  },
-};
-</script>
-
-<template>
-  <OrganizationDetails
-    :organization="mockOrganization"
-    :form-actions="formActions"
-    :read-only="false"
-  />
-</template>
-```
-
-### Example App Dependencies
-
-The example app `package.json` MUST include:
-
-```json
-{
-  "dependencies": {
-    "@auth0/auth0-vue": "^2.5.0",
-    "@auth0/universal-components-core": "workspace:*", // ← REQUIRED for type imports
-    "@auth0/universal-components-vue": "workspace:*",
-    "@tanstack/vue-query": "^5.90.21",
-    "vue": "^3.5.13",
-    "vue-router": "^4.5.0",
-    "vue-sonner": "^2.0.0"
-  }
-}
-```
-
-**Note:** `@auth0/universal-components-core` is required to import types like `OrganizationPrivate`.
-
-### Example App Checklist
-
-- [ ] `Auth0ComponentProvider` has `:auth-details="{ domain: 'devex.ca.auth0.com' }"`
-- [ ] `Auth0ComponentProvider` has `:i18n="{ currentLanguage: 'en' }"` (hardcoded, not computed)
-- [ ] Uses `OrganizationDetails` with mock data (not `OrganizationDetailsEdit`)
-- [ ] `package.json` includes `@auth0/universal-components-core` dependency
-- [ ] Type imports use `import type { X } from '@auth0/universal-components-core'`
-- [ ] `formActions` typed as `OrganizationDetailsFormActions`
-- [ ] `mockOrganization` typed as `ref<OrganizationPrivate>`
-
----
-
 ## Git Conventions
 
 - **Scope:** `vue` for all Vue package changes
 - **Examples:**
-  - `feat(vue): add OrganizationDetailsEdit block`
+  - `feat(vue): add <ComponentName> block`
   - `fix(vue): correct TextField validation`
-  - `test(vue): add useOrganizationDetailsEdit tests`
+  - `test(vue): add <composable> tests`
