@@ -6,19 +6,38 @@
 
 ---
 
-## Critical Warning
+## CRITICAL: Providers Are Mandatory
 
-**Providers MUST be created FIRST before ANY other Vue code.**
+**⚠️ STOP! Before converting ANY component, you MUST verify or create providers.**
 
-Vue's `provide`/`inject` system requires providers to exist before consumers. All composables use `inject()` — they will **fail silently** without providers.
+Vue's `provide`/`inject` system **FAILS SILENTLY** without providers. All composables use `inject()` — they will return `undefined` without providers, causing cryptic runtime errors with no useful stack trace.
 
-**Implementation order is NON-NEGOTIABLE:**
+### Pre-Conversion Verification
 
-1. `src/types/injection-keys.ts` — Define InjectionKey symbols
-2. `src/providers/Auth0ComponentProvider.vue` — SPA provider
-3. `src/providers/Auth0ProxyComponentProvider.vue` — Proxy provider
-4. `src/index.ts` + `src/proxy.ts` — Entry points
-5. Then and ONLY then: composables, components, blocks
+**Before starting ANY conversion task, check these files exist:**
+
+```bash
+# Run this check FIRST
+ls -la packages/vue/src/providers/Auth0ComponentProvider.vue
+ls -la packages/vue/src/providers/Auth0ProxyComponentProvider.vue
+ls -la packages/vue/src/types/injection-keys.ts
+```
+
+**If ANY file is missing → CREATE PROVIDERS FIRST before proceeding.**
+
+### Implementation Order (NON-NEGOTIABLE)
+
+1. `src/types/injection-keys.ts` — Define InjectionKey symbols (CORE_CLIENT_KEY, THEME_KEY, SCOPE_MANAGER_KEY, TOAST_KEY)
+2. `src/providers/Auth0ComponentProvider.vue` — SPA provider (imports @auth0/auth0-vue)
+3. `src/providers/Auth0ProxyComponentProvider.vue` — Proxy provider (NO @auth0/auth0-vue import!)
+4. `src/providers/index.ts` — Barrel export for both providers
+5. `src/index.ts` — Must export `Auth0ComponentProvider`
+6. `src/proxy.ts` — Must export `Auth0ProxyComponentProvider`
+7. Then and ONLY then: composables, components, blocks
+
+### Provider Code Location
+
+See `references/providers.md` for complete provider implementations.
 
 **Skip this order → Runtime errors with no useful stack trace.**
 
@@ -128,16 +147,24 @@ packages/vue/
 - [ ] `tsup.config.ts` — Build config
 - [ ] `src/lib/utils.ts` — `cn()` utility
 
-### Phase 2: Providers (CRITICAL)
+### Phase 2: Providers (CRITICAL — BLOCKING)
 
-- [ ] `src/types/injection-keys.ts` — All InjectionKey symbols
-- [ ] `src/providers/Auth0ComponentProvider.vue` — SPA mode
-- [ ] `src/providers/Auth0ProxyComponentProvider.vue` — Proxy mode
-- [ ] `src/providers/index.ts` — Barrel export
-- [ ] `src/index.ts` — SPA entry point
-- [ ] `src/proxy.ts` — Proxy entry point
+**⚠️ DO NOT SKIP THIS PHASE. Components will fail silently without providers.**
 
-**Verification:** After this phase, `inject(CORE_CLIENT_KEY)` must NOT return `undefined`.
+- [ ] `src/types/injection-keys.ts` — All InjectionKey symbols (CORE_CLIENT_KEY, THEME_KEY, SCOPE_MANAGER_KEY, TOAST_KEY)
+- [ ] `src/providers/Auth0ComponentProvider.vue` — SPA mode (imports @auth0/auth0-vue)
+- [ ] `src/providers/Auth0ProxyComponentProvider.vue` — Proxy mode (NO @auth0/auth0-vue!)
+- [ ] `src/providers/index.ts` — Barrel export for both providers
+- [ ] `src/index.ts` — SPA entry point (exports Auth0ComponentProvider)
+- [ ] `src/proxy.ts` — Proxy entry point (exports Auth0ProxyComponentProvider)
+
+**Verification Steps:**
+
+1. Run `ls -la packages/vue/src/providers/` — must show both .vue files
+2. Run `grep "provide(CORE_CLIENT_KEY" packages/vue/src/providers/*.vue` — must find matches
+3. After this phase, `inject(CORE_CLIENT_KEY)` must NOT return `undefined`
+
+**If verification fails → FIX PROVIDERS before proceeding to Phase 3.**
 
 ### Phase 3: Composables
 
@@ -295,3 +322,139 @@ Before merging any Vue component:
 | `src/lib/utils.ts`            | `cn()` utility                       |
 
 **For code patterns, see `SKILL.md` and `references/` folder.**
+
+---
+
+## Example App Setup (vue-spa-npm) — MANDATORY
+
+When setting up the Vue example app at `examples/vue-spa-npm/`, these patterns are **NON-NEGOTIABLE**:
+
+### Auth0 Vue SDK Workarounds
+
+The `@auth0/auth0-vue` SDK has limitations. Apply these fixes:
+
+#### 1. Auth0ComponentProvider Configuration
+
+**ALWAYS configure the provider exactly like this:**
+
+```vue
+<!-- src/App.vue -->
+<Auth0ComponentProvider
+  :auth-details="{
+    domain: 'devex.ca.auth0.com',
+  }"
+  :i18n="{ currentLanguage: 'en' }"
+  :theme-settings="{
+    theme: 'default',
+    mode: 'light',
+  }"
+>
+  <!-- app content -->
+</Auth0ComponentProvider>
+```
+
+**Critical points:**
+
+- `:auth-details` with `domain` is REQUIRED
+- `:i18n` must be hardcoded to `'en'` — NOT a computed value
+- Do NOT use `useI18n()` for the provider's i18n prop
+
+#### 2. Use Mock Data (Not Live API)
+
+Use `OrganizationDetails` component with mock data instead of `OrganizationDetailsEdit`:
+
+```vue
+<!-- src/views/OrganizationManagementPage.vue -->
+<script setup lang="ts">
+import type { OrganizationPrivate } from '@auth0/universal-components-core';
+import { OrganizationDetails } from '@auth0/universal-components-vue';
+import type { OrganizationDetailsFormActions } from '@auth0/universal-components-vue';
+import { ref } from 'vue';
+
+const mockOrganization = ref<OrganizationPrivate>({
+  id: 'org_a11y123456789',
+  name: 'a11y-corp',
+  display_name: 'A11y Corporation',
+  branding: {
+    logo_url: 'https://cdn.auth0.com/avatars/au.png',
+    colors: {
+      primary: '#EB5424',
+      page_background: '#000000',
+    },
+  },
+});
+
+const formActions: OrganizationDetailsFormActions = {
+  isLoading: false,
+  showPrevious: true,
+  showUnsavedChanges: true,
+  align: 'right',
+  previousAction: {
+    disabled: false,
+    onClick: () => console.log('Cancel clicked'),
+  },
+  nextAction: {
+    disabled: false,
+    onClick: async (data: OrganizationPrivate) => {
+      console.log('Save clicked', data);
+      mockOrganization.value = { ...mockOrganization.value, ...data };
+      return true;
+    },
+  },
+};
+</script>
+
+<template>
+  <div class="p-6 space-y-6">
+    <div class="mx-auto max-w-4xl">
+      <h2 class="text-2xl font-bold text-gray-900 mb-6">Organization Details</h2>
+      <OrganizationDetails
+        :organization="mockOrganization"
+        :form-actions="formActions"
+        :read-only="false"
+      />
+    </div>
+  </div>
+</template>
+```
+
+#### 3. Required Dependencies
+
+The example app `package.json` MUST include `@auth0/universal-components-core`:
+
+```json
+{
+  "dependencies": {
+    "@auth0/auth0-vue": "^2.5.0",
+    "@auth0/universal-components-core": "workspace:*",
+    "@auth0/universal-components-vue": "workspace:*",
+    "@tanstack/vue-query": "^5.90.21",
+    "vue": "^3.5.13",
+    "vue-router": "^4.5.0",
+    "vue-sonner": "^2.0.0"
+  }
+}
+```
+
+### Example App Verification Checklist
+
+**Run these checks before considering the example app complete:**
+
+- [ ] `App.vue` has `Auth0ComponentProvider` with `:auth-details="{ domain: 'devex.ca.auth0.com' }"`
+- [ ] `App.vue` has `:i18n="{ currentLanguage: 'en' }"` (hardcoded string, NOT computed)
+- [ ] `App.vue` does NOT import `useI18n` or use `computed` for i18n
+- [ ] `OrganizationManagementPage.vue` uses `OrganizationDetails` (NOT `OrganizationDetailsEdit`)
+- [ ] `OrganizationManagementPage.vue` has mock data with proper types
+- [ ] `package.json` includes `@auth0/universal-components-core` as dependency
+- [ ] Type imports: `import type { OrganizationPrivate } from '@auth0/universal-components-core'`
+- [ ] Type imports: `import type { OrganizationDetailsFormActions } from '@auth0/universal-components-vue'`
+- [ ] `pnpm type-check` passes in example app directory
+
+### Common Example App Errors
+
+| Error                                                   | Cause                   | Fix                                          |
+| ------------------------------------------------------- | ----------------------- | -------------------------------------------- |
+| `Cannot find module '@auth0/universal-components-core'` | Missing dependency      | Add to `package.json` dependencies           |
+| Type mismatch on `formActions`                          | Missing type annotation | Add `: OrganizationDetailsFormActions`       |
+| Type mismatch on `mockOrganization`                     | Missing generic         | Use `ref<OrganizationPrivate>(...)`          |
+| Provider props type error                               | Using computed for i18n | Hardcode `:i18n="{ currentLanguage: 'en' }"` |

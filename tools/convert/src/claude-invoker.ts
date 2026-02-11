@@ -1,25 +1,30 @@
-import { spawn } from 'child_process';
-import { readFile } from 'fs/promises';
-import { basename, dirname, join, resolve } from 'path';
+import { existsSync } from 'fs';
+import { readdir, readFile, writeFile } from 'fs/promises';
+import { basename, dirname, join } from 'path';
 
 import chalk from 'chalk';
 
 type Framework = 'vue' | 'angular' | 'svelte';
 
-export interface ClaudeInvocationOptions {
+interface RelatedFile {
+  name: string;
+  path: string;
+  content: string;
+}
+
+export interface PromptGenerationOptions {
   /** Path to React component relative to packages/react/src */
   componentPath: string;
   /** Target framework for conversion */
   targetFramework: Framework;
   /** Working directory (defaults to repo root) */
   workingDir?: string;
-  /** Enable auto-retry on validation failure */
-  autoRetry?: boolean;
 }
 
-export interface ClaudeInvocationResult {
+export interface PromptGenerationResult {
   success: boolean;
-  outputPath?: string;
+  prompt?: string;
+  promptPath?: string;
   error?: string;
 }
 
@@ -27,17 +32,10 @@ export interface ClaudeInvocationResult {
  * Get the root directory of the monorepo
  */
 function getRepoRoot(): string {
-  // Walk up from current directory to find packages/react
   let dir = process.cwd();
   while (dir !== '/') {
-    try {
-      const packagesDir = join(dir, 'packages');
-      // This is a simple check - in production you might want to verify more
-      if (dir.includes('auth0-ui-components')) {
-        return dir;
-      }
-    } catch {
-      // Continue walking up
+    if (dir.includes('auth0-ui-components')) {
+      return dir;
     }
     dir = dirname(dir);
   }
@@ -45,13 +43,79 @@ function getRepoRoot(): string {
 }
 
 /**
- * Build the conversion prompt for Claude Code
+ * Copy text to clipboard using platform-specific commands
  */
-async function buildConversionPrompt(
-  componentPath: string,
-  targetFramework: Framework,
-  repoRoot: string,
-): Promise<string> {
+async function copyToClipboard(text: string): Promise<boolean> {
+  try {
+    const { execa } = await import('execa');
+
+    if (process.platform === 'darwin') {
+      await execa('pbcopy', { input: text });
+    } else if (process.platform === 'linux') {
+      await execa('xclip', ['-selection', 'clipboard'], { input: text });
+    } else if (process.platform === 'win32') {
+      await execa('clip', { input: text });
+    } else {
+      return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Find related files in the same directory as the component
+ */
+async function findRelatedFiles(componentPath: string, repoRoot: string): Promise<RelatedFile[]> {
+  const reactSourcePath = join(repoRoot, 'packages/react/src', componentPath);
+  const componentDir = dirname(reactSourcePath);
+  const componentFileName = basename(componentPath);
+
+  const relatedFiles: RelatedFile[] = [];
+
+  try {
+    const files = await readdir(componentDir);
+
+    for (const file of files) {
+      // Skip the main component file itself
+      if (file === componentFileName) continue;
+
+      // Only include .tsx files (not index.ts, tests, etc.)
+      if (!file.endsWith('.tsx')) continue;
+
+      // Skip test files
+      if (file.includes('.test.') || file.includes('.spec.')) continue;
+
+      const filePath = join(componentDir, file);
+      try {
+        const content = await readFile(filePath, 'utf-8');
+        relatedFiles.push({
+          name: file,
+          path: filePath,
+          content,
+        });
+      } catch {
+        // Skip files that can't be read
+      }
+    }
+  } catch {
+    // Directory doesn't exist or can't be read
+  }
+
+  return relatedFiles;
+}
+
+/**
+ * Generate the conversion prompt for Claude Code
+ */
+export async function generateConversionPrompt(
+  options: PromptGenerationOptions,
+): Promise<PromptGenerationResult> {
+  const repoRoot = options.workingDir || getRepoRoot();
+  const { componentPath, targetFramework } = options;
+
   const componentName = basename(componentPath, '.tsx');
   const reactSourcePath = join(repoRoot, 'packages/react/src', componentPath);
 
@@ -59,9 +123,15 @@ async function buildConversionPrompt(
   let reactSource: string;
   try {
     reactSource = await readFile(reactSourcePath, 'utf-8');
-  } catch (error) {
-    throw new Error(`Could not read React component at ${reactSourcePath}`);
+  } catch {
+    return {
+      success: false,
+      error: `Could not read React component at ${reactSourcePath}`,
+    };
   }
+
+  // Find related files in the same directory
+  const relatedFiles = await findRelatedFiles(componentPath, repoRoot);
 
   // Determine output path based on component type
   let outputDir: string;
@@ -75,8 +145,31 @@ async function buildConversionPrompt(
     outputDir = `packages/${targetFramework}/src/${componentPath.replace('.tsx', '')}`;
   }
 
-  const prompt = `
-# React → Vue Component Conversion Task
+  // Build related files section
+  let relatedFilesSection = '';
+  if (relatedFiles.length > 0) {
+    relatedFilesSection = `
+
+## Related Files in Same Directory
+
+The following files are in the same directory and should also be converted:
+
+${relatedFiles
+  .map(
+    (file) => `### ${file.name}
+
+\`\`\`tsx
+${file.content}
+\`\`\`
+`,
+  )
+  .join('\n')}
+
+**Important:** Convert ALL related files together. They are likely imported by the main component.
+`;
+  }
+
+  const prompt = `# React → Vue Component Conversion Task
 
 ## Source Component
 **File:** \`packages/react/src/${componentPath}\`
@@ -102,22 +195,21 @@ async function buildConversionPrompt(
    - For components: \`packages/vue/src/components/...\`
    - For hooks: \`packages/vue/src/composables/...\` (rename to \`use-*.ts\`)
 
-4. **Validate the conversion:**
-   - Run \`cd packages/vue && pnpm type-check\`
-   - Fix any TypeScript errors
-   - Ensure the component follows Vue conventions
-
-5. **If this is a block component**, also create or update:
+4. **Also create/update:**
    - Any required composables
    - The corresponding types file
    - Update barrel exports (index.ts)
+
+5. **Validate the conversion:**
+   - Run \`cd packages/vue && pnpm type-check\`
+   - Fix any TypeScript errors
 
 ## React Source Code
 
 \`\`\`tsx
 ${reactSource}
 \`\`\`
-
+${relatedFilesSection}
 ## Conversion Checklist
 - [ ] Uses \`<script setup lang="ts">\`
 - [ ] All \`useState\` → \`ref()\`
@@ -135,177 +227,229 @@ ${reactSource}
 Please proceed with the conversion.
 `;
 
-  return prompt;
-}
+  // Save prompt to file
+  const promptPath = join(repoRoot, '.claude-convert-prompt.md');
+  try {
+    await writeFile(promptPath, prompt);
+  } catch {
+    // Non-critical, continue anyway
+  }
 
-/**
- * Launch Claude Code interactively for component conversion
- *
- * This function spawns Claude Code as an interactive subprocess,
- * allowing the user to monitor and guide the conversion in real-time.
- */
-export async function launchClaudeCodeSession(
-  options: ClaudeInvocationOptions,
-): Promise<ClaudeInvocationResult> {
-  const repoRoot = options.workingDir || getRepoRoot();
-  const { componentPath, targetFramework } = options;
+  // Copy to clipboard
+  const copied = await copyToClipboard(prompt);
 
-  console.log(chalk.blue('\n🤖 Launching Claude Code for conversion...\n'));
+  console.log(chalk.blue('\n📋 Conversion Prompt Generated\n'));
   console.log(chalk.gray(`Source: packages/react/src/${componentPath}`));
   console.log(chalk.gray(`Target: ${targetFramework}`));
-  console.log(chalk.gray(`Working directory: ${repoRoot}\n`));
-
-  try {
-    // Build the conversion prompt
-    const prompt = await buildConversionPrompt(componentPath, targetFramework, repoRoot);
-
-    // Write prompt to a temp file for reference and for Claude to read
-    const { writeFile } = await import('fs/promises');
-    const promptPath = join(repoRoot, '.claude-convert-prompt.md');
-    await writeFile(promptPath, prompt);
-    console.log(chalk.gray(`Prompt saved to: ${promptPath}\n`));
-
-    // Launch Claude Code interactively by piping the prompt via stdin
-    // This avoids shell interpretation issues with special characters
-    console.log(chalk.yellow('Starting interactive Claude Code session...'));
-    console.log(chalk.gray('You can guide the conversion as needed.\n'));
-    console.log(chalk.cyan('─'.repeat(60)));
-
-    // Use spawn with pipe for stdin, inherit for stdout/stderr
-    const claude = spawn('claude', ['--print'], {
-      cwd: repoRoot,
-      stdio: ['pipe', 'inherit', 'inherit'],
-    });
-
-    // Write the prompt to stdin and close it
-    claude.stdin?.write(prompt);
-    claude.stdin?.end();
-
-    return new Promise((resolve) => {
-      claude.on('close', (code) => {
-        console.log(chalk.cyan('─'.repeat(60)));
-
-        if (code === 0) {
-          console.log(chalk.green('\n✓ Claude Code session completed successfully\n'));
-
-          // Determine the expected output path
-          const componentName = basename(componentPath, '.tsx');
-          let outputPath: string;
-
-          if (componentPath.startsWith('blocks/')) {
-            const subPath = componentPath.replace('blocks/', '').replace('.tsx', '');
-            outputPath = join(
-              repoRoot,
-              `packages/${targetFramework}/src/blocks`,
-              subPath,
-              `${componentName}.vue`,
-            );
-          } else if (componentPath.startsWith('components/ui/')) {
-            outputPath = join(
-              repoRoot,
-              `packages/${targetFramework}/src/components/ui`,
-              `${componentName}.vue`,
-            );
-          } else {
-            outputPath = join(
-              repoRoot,
-              `packages/${targetFramework}/src`,
-              componentPath.replace('.tsx', '.vue'),
-            );
-          }
-
-          resolve({
-            success: true,
-            outputPath,
-          });
-        } else {
-          console.log(chalk.red(`\n✗ Claude Code session exited with code ${code}\n`));
-          resolve({
-            success: false,
-            error: `Claude Code exited with code ${code}`,
-          });
-        }
-      });
-
-      claude.on('error', (error) => {
-        console.log(chalk.red(`\n✗ Failed to launch Claude Code: ${error.message}\n`));
-        resolve({
-          success: false,
-          error: error.message,
-        });
-      });
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.log(chalk.red(`\n✗ Error: ${errorMessage}\n`));
-    return {
-      success: false,
-      error: errorMessage,
-    };
+  if (relatedFiles.length > 0) {
+    console.log(chalk.gray(`Related files: ${relatedFiles.map((f) => f.name).join(', ')}`));
   }
+  console.log(chalk.gray(`Prompt saved to: ${promptPath}`));
+
+  if (copied) {
+    console.log(chalk.green('✓ Prompt copied to clipboard\n'));
+  } else {
+    console.log(chalk.yellow('⚠ Could not copy to clipboard (manual copy from file)\n'));
+  }
+
+  console.log(chalk.cyan('─'.repeat(60)));
+  console.log(chalk.white('\nNext steps:'));
+  console.log(chalk.gray('  1. Open Claude Code in the repo:'));
+  console.log(chalk.cyan(`     cd ${repoRoot} && claude\n`));
+  console.log(chalk.gray('  2. Paste the prompt (already in clipboard)'));
+  console.log(chalk.gray('  3. Guide the conversion as needed'));
+  console.log(chalk.gray('  4. After completion, run validation:'));
+  console.log(chalk.cyan('     pnpm convert validate -t vue\n'));
+  console.log(chalk.cyan('─'.repeat(60)));
+
+  return {
+    success: true,
+    prompt,
+    promptPath,
+  };
 }
 
 /**
- * Run Claude Code non-interactively with a prompt
- * Returns when Claude Code completes
+ * Generate the integration prompt for Claude Code
  */
-export async function runClaudeCodeConversion(
-  options: ClaudeInvocationOptions,
-): Promise<ClaudeInvocationResult> {
+export async function generateIntegrationPrompt(
+  options: PromptGenerationOptions & { exampleAppExists: boolean },
+): Promise<PromptGenerationResult> {
   const repoRoot = options.workingDir || getRepoRoot();
-  const { componentPath, targetFramework } = options;
+  const { componentPath, targetFramework, exampleAppExists } = options;
 
-  try {
-    const prompt = await buildConversionPrompt(componentPath, targetFramework, repoRoot);
+  const componentName = basename(componentPath, '.tsx');
+  const kebabName = componentName.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+  const displayName = componentName.replace(/([A-Z])/g, ' $1').trim();
 
-    // Use execa for better control, pipe prompt via stdin
-    const { execa } = await import('execa');
+  let prompt: string;
 
-    console.log(chalk.blue('\n🤖 Running Claude Code conversion...\n'));
+  if (!exampleAppExists) {
+    // Include scaffolding instructions
+    prompt = `# Example App Scaffolding + Component Integration
 
-    const result = await execa('claude', ['--print'], {
-      cwd: repoRoot,
-      input: prompt,
-      timeout: 5 * 60 * 1000, // 5 minute timeout
-    });
+## Task
+Create the Vue example app and integrate the converted ${componentName} component.
 
-    if (result.exitCode === 0) {
-      const componentName = basename(componentPath, '.tsx');
-      let outputPath: string;
+## Step 1: Scaffold the Example App
 
-      if (componentPath.startsWith('blocks/')) {
-        const subPath = componentPath.replace('blocks/', '').replace('.tsx', '');
-        outputPath = join(
-          repoRoot,
-          `packages/${targetFramework}/src/blocks`,
-          subPath,
-          `${componentName}.vue`,
-        );
-      } else {
-        outputPath = join(
-          repoRoot,
-          `packages/${targetFramework}/src`,
-          componentPath.replace('.tsx', '.vue'),
-        );
-      }
+Create \`examples/vue/\` based on the React SPA example at \`examples/react-spa-npm/\`.
 
-      return {
-        success: true,
-        outputPath,
-      };
-    }
+**Structure to create:**
+\`\`\`
+examples/vue/
+├── package.json           # Vue deps, link to local Vue package
+├── vite.config.ts         # Vue plugin, @ alias
+├── tsconfig.json          # Vue-specific tsconfig
+├── postcss.config.mjs     # Tailwind v4 postcss
+├── index.html
+├── .env.example           # Auth0 config template
+└── src/
+    ├── main.ts            # createApp, router, Auth0, VueQuery
+    ├── App.vue            # Auth0ComponentProvider wrapper
+    ├── style.css          # Import package styles
+    ├── config/
+    │   └── env.ts         # Auth0 config from env vars
+    ├── router/
+    │   └── index.ts       # Vue Router setup
+    ├── components/
+    │   └── NavBar.vue     # Login/logout, nav links
+    └── views/
+        └── HomePage.vue   # Landing page
+\`\`\`
 
-    return {
-      success: false,
-      error: result.stderr || 'Conversion failed',
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    return {
-      success: false,
-      error: errorMessage,
-    };
+**Reference:** Look at \`examples/react-spa-npm/\` for:
+- Auth0 configuration pattern (domain, clientId, audience)
+- Routing structure
+- NavBar with login/logout buttons
+- Component integration pattern
+
+**Key differences from React:**
+- Use \`@auth0/auth0-vue\` instead of \`@auth0/auth0-react\`
+- Use \`createAuth0()\` plugin instead of Auth0Provider
+- Use \`@auth0/universal-components-vue\` linked to local tarball
+- Router must be installed BEFORE Auth0 plugin
+
+## Step 2: Integrate the Component
+
+After scaffolding, integrate ${componentName}:
+
+1. **Create view:** \`src/views/${componentName}Page.vue\`
+   \`\`\`vue
+   <script setup lang="ts">
+   import { ${componentName} } from '@auth0/universal-components-vue';
+   </script>
+
+   <template>
+     <div class="max-w-3xl">
+       <${componentName} />
+     </div>
+   </template>
+   \`\`\`
+
+2. **Add route:** In \`src/router/index.ts\`
+   \`\`\`typescript
+   {
+     path: '/${kebabName}',
+     name: '${kebabName}',
+     component: () => import('@/views/${componentName}Page.vue'),
+     beforeEnter: createAuthGuard(),
+   }
+   \`\`\`
+
+3. **Add nav link:** In \`src/components/NavBar.vue\`
+   \`\`\`vue
+   <RouterLink v-if="isAuthenticated" to="/${kebabName}" class="...">
+     ${displayName}
+   </RouterLink>
+   \`\`\`
+
+## Step 3: Test
+
+1. Copy \`.env.example\` to \`.env\` and fill in Auth0 credentials
+2. Run \`cd examples/vue && pnpm install && pnpm dev\`
+3. Verify component renders at \`http://localhost:5173/${kebabName}\`
+
+Please proceed with scaffolding and integration.
+`;
+  } else {
+    // Just integration instructions
+    prompt = `# Example App Integration
+
+## Task
+Integrate the converted ${componentName} component into the Vue example app.
+
+## Steps
+
+1. **Create view:** \`examples/vue/src/views/${componentName}Page.vue\`
+   \`\`\`vue
+   <script setup lang="ts">
+   import { ${componentName} } from '@auth0/universal-components-vue';
+   </script>
+
+   <template>
+     <div class="max-w-3xl">
+       <${componentName} />
+     </div>
+   </template>
+   \`\`\`
+
+2. **Add route:** In \`examples/vue/src/router/index.ts\`
+   - Import the view component
+   - Add route with path \`/${kebabName}\`
+   - Use \`createAuthGuard()\` for auth protection
+
+3. **Add nav link:** In \`examples/vue/src/components/NavBar.vue\`
+   - Add RouterLink to \`/${kebabName}\`
+   - Show only when authenticated
+
+4. **Test:**
+   - Run \`cd examples/vue && pnpm dev\`
+   - Navigate to \`http://localhost:5173/${kebabName}\`
+   - Verify component renders correctly
+
+Please proceed with the integration.
+`;
   }
+
+  // Save prompt to file
+  const promptPath = join(repoRoot, '.claude-integrate-prompt.md');
+  try {
+    await writeFile(promptPath, prompt);
+  } catch {
+    // Non-critical
+  }
+
+  // Copy to clipboard
+  const copied = await copyToClipboard(prompt);
+
+  console.log(chalk.blue('\n📋 Integration Prompt Generated\n'));
+  console.log(chalk.gray(`Component: ${componentName}`));
+  console.log(chalk.gray(`Example app exists: ${exampleAppExists ? 'yes' : 'no (will scaffold)'}`));
+  console.log(chalk.gray(`Prompt saved to: ${promptPath}`));
+
+  if (copied) {
+    console.log(chalk.green('✓ Prompt copied to clipboard\n'));
+  } else {
+    console.log(chalk.yellow('⚠ Could not copy to clipboard (manual copy from file)\n'));
+  }
+
+  console.log(chalk.cyan('─'.repeat(60)));
+  console.log(chalk.white('\nNext steps:'));
+  console.log(chalk.gray('  1. Open Claude Code in the repo:'));
+  console.log(chalk.cyan(`     cd ${repoRoot} && claude\n`));
+  console.log(chalk.gray('  2. Paste the prompt (already in clipboard)'));
+  console.log(chalk.gray('  3. Guide the integration as needed'));
+  console.log(chalk.gray('  4. Start the dev server:'));
+  console.log(chalk.cyan(`     cd examples/vue && pnpm dev\n`));
+  console.log(chalk.gray(`  5. Preview at: http://localhost:5173/${kebabName}`));
+  console.log(chalk.cyan('─'.repeat(60)));
+
+  return {
+    success: true,
+    prompt,
+    promptPath,
+  };
 }
 
 /**

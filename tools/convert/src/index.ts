@@ -1,295 +1,439 @@
 import chalk from 'chalk';
 import { program } from 'commander';
+import Enquirer from 'enquirer';
 import ora from 'ora';
 
-import { checkClaudeCodeAvailable, launchClaudeCodeSession } from './claude-invoker.js';
-import {
-  createTarball,
-  exampleAppExists,
-  integrateIntoExampleApp,
-  scaffoldExampleApp,
-} from './example-app-integration.js';
-import { checkGitAvailable, createPullRequest } from './git.js';
-import { validateBuild, validateOutput } from './validator.js';
+import { generateConversionPrompt, generateIntegrationPrompt } from './claude-invoker.js';
+import { createTarball, exampleAppExists } from './example-app-integration.js';
+import { validateBuild } from './validator.js';
 
 const SUPPORTED_FRAMEWORKS = ['vue', 'angular', 'svelte'] as const;
 type Framework = (typeof SUPPORTED_FRAMEWORKS)[number];
 
-interface ConvertOptions {
-  component: string;
-  to: string;
-  pr?: boolean;
-  dryRun?: boolean;
-  verbose?: boolean;
-  autoValidate?: boolean;
-  createTarball?: boolean;
-  integrateExample?: boolean;
-  interactive?: boolean;
-}
+const enquirer = new Enquirer();
 
 program
   .name('convert')
   .description('Convert React components to other UI frameworks')
   .version('1.0.0');
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: Wait for user confirmation
+// ─────────────────────────────────────────────────────────────────────────────
+async function waitForConfirmation(message: string): Promise<boolean> {
+  const response = (await enquirer.prompt({
+    type: 'confirm',
+    name: 'confirmed',
+    message,
+    initial: true,
+  })) as { confirmed: boolean };
+  return response.confirmed;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: Print step header
+// ─────────────────────────────────────────────────────────────────────────────
+function printStep(stepNumber: number, totalSteps: number, title: string) {
+  console.log(chalk.cyan('\n' + '═'.repeat(60)));
+  console.log(chalk.white.bold(`  Step ${stepNumber}/${totalSteps}: ${title}`));
+  console.log(chalk.cyan('═'.repeat(60) + '\n'));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper: Print Claude Code instructions
+// ─────────────────────────────────────────────────────────────────────────────
+function printClaudeInstructions(repoRoot: string) {
+  console.log(chalk.yellow('\n📋 Instructions:\n'));
+  console.log(chalk.white('  1. Open a NEW terminal window'));
+  console.log(chalk.white('  2. Navigate to the repo and start Claude Code:'));
+  console.log(chalk.cyan(`     cd ${repoRoot} && claude\n`));
+  console.log(chalk.white('  3. Paste the prompt (already in clipboard): ') + chalk.gray('Cmd+V'));
+  console.log(chalk.white('  4. Guide Claude through the task'));
+  console.log(chalk.white('  5. Come back here when done\n'));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GUIDED command - Interactive guided workflow
+// ─────────────────────────────────────────────────────────────────────────────
 program
-  .command('component')
-  .description('Convert a React component to another framework')
+  .command('run')
+  .description('Guided interactive conversion workflow')
   .requiredOption(
     '-c, --component <path>',
     'Path to React component (relative to packages/react/src)',
   )
-  .requiredOption(
-    '-t, --to <frameworks>',
-    'Target framework(s): vue, angular, svelte (comma-separated)',
-  )
-  .option('--pr', 'Create a pull request with the conversion', false)
-  .option('--dry-run', 'Show what would be converted without making changes', false)
-  .option('-v, --verbose', 'Show detailed output', false)
-  .option('--auto-validate', 'Run validation after conversion', true)
-  .option('--create-tarball', 'Create .tgz package after conversion', true)
-  .option('--integrate-example', 'Integrate into example app', true)
-  .option('-i, --interactive', 'Run Claude Code interactively', true)
-  .action(async (options: ConvertOptions) => {
-    const frameworks = options.to.split(',').map((f) => f.trim().toLowerCase()) as Framework[];
+  .requiredOption('-t, --to <framework>', 'Target framework: vue, angular, svelte')
+  .action(async (options: { component: string; to: string }) => {
+    const framework = options.to.toLowerCase() as Framework;
+    const componentPath = options.component;
 
-    // Validate frameworks
-    for (const framework of frameworks) {
-      if (!SUPPORTED_FRAMEWORKS.includes(framework)) {
-        console.error(
-          chalk.red(
-            `Error: Unsupported framework "${framework}". Supported: ${SUPPORTED_FRAMEWORKS.join(', ')}`,
-          ),
-        );
-        process.exit(1);
-      }
+    if (!SUPPORTED_FRAMEWORKS.includes(framework)) {
+      console.error(
+        chalk.red(
+          `Error: Unsupported framework "${framework}". Supported: ${SUPPORTED_FRAMEWORKS.join(', ')}`,
+        ),
+      );
+      process.exit(1);
     }
 
-    // Currently only Vue is fully implemented
-    if (frameworks.some((f) => f !== 'vue')) {
+    if (framework !== 'vue') {
       console.log(
         chalk.yellow(
-          '\nNote: Only Vue conversion is fully implemented. Other frameworks coming soon.\n',
+          `\nNote: Only Vue conversion is fully implemented. ${framework} coming soon.\n`,
         ),
       );
     }
 
-    console.log(chalk.blue('\n🔄 Auth0 Universal Components - Framework Converter\n'));
-    console.log(chalk.gray(`Source: packages/react/src/${options.component}`));
-    console.log(chalk.gray(`Target frameworks: ${frameworks.join(', ')}`));
-    console.log(chalk.gray(`Create PR: ${options.pr ? 'yes' : 'no'}`));
-    console.log(chalk.gray(`Dry run: ${options.dryRun ? 'yes' : 'no'}`));
-    console.log(chalk.gray(`Auto-validate: ${options.autoValidate ? 'yes' : 'no'}`));
-    console.log(chalk.gray(`Create tarball: ${options.createTarball ? 'yes' : 'no'}`));
-    console.log(chalk.gray(`Integrate example: ${options.integrateExample ? 'yes' : 'no'}\n`));
+    const repoRoot = process.cwd();
+    const totalSteps = 6;
 
-    // Check prerequisites
-    const claudeAvailable = await checkClaudeCodeAvailable();
-    if (!claudeAvailable) {
-      console.error(chalk.red('Error: Claude Code CLI not found. Please install it first.'));
-      console.log(chalk.gray('Visit: https://claude.ai/claude-code\n'));
+    console.log(chalk.blue('\n🔄 Auth0 Universal Components - Guided Conversion\n'));
+    console.log(chalk.gray(`Component: ${componentPath}`));
+    console.log(chalk.gray(`Target: ${framework}`));
+    console.log(chalk.gray(`This wizard will guide you through all ${totalSteps} steps.\n`));
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Step 1: Generate conversion prompt
+    // ─────────────────────────────────────────────────────────────────────────
+    printStep(1, totalSteps, 'Prepare Conversion Prompt');
+
+    console.log(chalk.gray('Generating conversion prompt and copying to clipboard...\n'));
+
+    const conversionResult = await generateConversionPrompt({
+      componentPath,
+      targetFramework: framework,
+    });
+
+    if (!conversionResult.success) {
+      console.error(chalk.red(`\nError: ${conversionResult.error}\n`));
       process.exit(1);
     }
 
-    const results: {
-      framework: Framework;
-      success: boolean;
-      outputPath?: string;
-      error?: string;
-    }[] = [];
+    // ─────────────────────────────────────────────────────────────────────────
+    // Step 2: User runs Claude Code for conversion
+    // ─────────────────────────────────────────────────────────────────────────
+    printStep(2, totalSteps, 'Convert with Claude Code');
 
-    for (const framework of frameworks) {
-      const spinner = ora(`Converting to ${framework}...`).start();
+    printClaudeInstructions(repoRoot);
 
+    const conversionDone = await waitForConfirmation(
+      'Have you completed the conversion in Claude Code?',
+    );
+
+    if (!conversionDone) {
+      console.log(chalk.yellow('\n⚠ Conversion cancelled. Run the command again when ready.\n'));
+      process.exit(0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Step 3: Validate & Package
+    // ─────────────────────────────────────────────────────────────────────────
+    printStep(3, totalSteps, 'Validate & Package');
+
+    let hasErrors = false;
+
+    // Type check
+    const typeCheckSpinner = ora('Running type check...').start();
+    try {
+      const { execa } = await import('execa');
+      await execa('pnpm', ['type-check'], {
+        cwd: `packages/${framework}`,
+        reject: true,
+      });
+      typeCheckSpinner.succeed('Type check passed');
+    } catch (error) {
+      typeCheckSpinner.fail('Type check failed');
+      const stderr = (error as { stderr?: string }).stderr || '';
+      if (stderr) {
+        console.log(chalk.red('\nErrors:'));
+        console.log(chalk.gray(stderr.slice(0, 1000)));
+      }
+      hasErrors = true;
+    }
+
+    // Build
+    const buildSpinner = ora('Running build...').start();
+    const buildResult = await validateBuild(framework);
+
+    if (!buildResult.success) {
+      buildSpinner.fail('Build failed');
+      if (buildResult.errors) {
+        console.log(chalk.red('\nBuild errors:'));
+        buildResult.errors.forEach((e) => console.log(chalk.gray(`  ${e}`)));
+      }
+      hasErrors = true;
+    } else {
+      buildSpinner.succeed('Build passed');
+    }
+
+    if (hasErrors) {
+      console.log(chalk.red('\n✗ Validation failed.\n'));
+
+      const retry = await waitForConfirmation(
+        'Would you like to go back to Claude Code to fix the errors?',
+      );
+
+      if (retry) {
+        console.log(chalk.yellow('\n📋 Go back to Claude Code and fix the errors.'));
+        console.log(chalk.gray('Then run this command again.\n'));
+      }
+      process.exit(1);
+    }
+
+    // Create tarball
+    const tarballPath = await createTarball(framework);
+    if (tarballPath) {
+      console.log(chalk.green(`\n✓ Tarball created: ${tarballPath}`));
+    }
+
+    console.log(chalk.green('\n✓ Validation passed!\n'));
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Step 4: Generate integration prompt
+    // ─────────────────────────────────────────────────────────────────────────
+    printStep(4, totalSteps, 'Prepare Integration Prompt');
+
+    const appExists = exampleAppExists(framework);
+
+    if (!appExists) {
+      console.log(chalk.yellow('⚠ Example app does not exist yet.'));
+      console.log(chalk.gray('  The integration prompt will include scaffolding instructions.\n'));
+    }
+
+    console.log(chalk.gray('Generating integration prompt and copying to clipboard...\n'));
+
+    const integrationResult = await generateIntegrationPrompt({
+      componentPath,
+      targetFramework: framework,
+      exampleAppExists: appExists,
+    });
+
+    if (!integrationResult.success) {
+      console.error(chalk.red(`\nError: ${integrationResult.error}\n`));
+      process.exit(1);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Step 5: User runs Claude Code for integration
+    // ─────────────────────────────────────────────────────────────────────────
+    printStep(5, totalSteps, 'Integrate with Claude Code');
+
+    printClaudeInstructions(repoRoot);
+
+    const integrationDone = await waitForConfirmation(
+      'Have you completed the integration in Claude Code?',
+    );
+
+    if (!integrationDone) {
+      console.log(chalk.yellow('\n⚠ Integration cancelled. Run the command again when ready.\n'));
+      process.exit(0);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Step 6: Preview
+    // ─────────────────────────────────────────────────────────────────────────
+    printStep(6, totalSteps, 'Preview');
+
+    const componentName = componentPath.split('/').pop()?.replace('.tsx', '') || '';
+    const kebabName = componentName.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+
+    console.log(chalk.green('🎉 Conversion complete!\n'));
+    console.log(chalk.white('To preview the component:\n'));
+    console.log(chalk.cyan(`  cd examples/${framework} && pnpm dev\n`));
+    console.log(chalk.white(`Then open: `) + chalk.cyan(`http://localhost:5173/${kebabName}\n`));
+
+    const startServer = await waitForConfirmation('Would you like to start the dev server now?');
+
+    if (startServer) {
+      console.log(chalk.gray('\nStarting dev server...\n'));
+      const { execa } = await import('execa');
       try {
-        if (options.dryRun) {
-          spinner.info(`[Dry run] Would convert ${options.component} to ${framework}`);
-          results.push({ framework, success: true });
-          continue;
-        }
-
-        // ─────────────────────────────────────────────────────────────
-        // Step 1: Launch Claude Code for conversion
-        // ─────────────────────────────────────────────────────────────
-        spinner.text = `Launching Claude Code for ${framework} conversion...`;
-        spinner.stop();
-
-        const conversionResult = await launchClaudeCodeSession({
-          componentPath: options.component,
-          targetFramework: framework,
-          autoRetry: true,
+        await execa('pnpm', ['dev'], {
+          cwd: `examples/${framework}`,
+          stdio: 'inherit',
         });
-
-        if (!conversionResult.success) {
-          results.push({
-            framework,
-            success: false,
-            error: conversionResult.error || 'Conversion failed',
-          });
-          continue;
-        }
-
-        const outputPath = conversionResult.outputPath!;
-        console.log(chalk.green(`\n✓ Component converted: ${outputPath}\n`));
-
-        // ─────────────────────────────────────────────────────────────
-        // Step 2: Validate the conversion
-        // ─────────────────────────────────────────────────────────────
-        if (options.autoValidate) {
-          const validateSpinner = ora('Validating conversion...').start();
-
-          const validationResult = await validateOutput(outputPath, framework);
-
-          if (!validationResult.success) {
-            validateSpinner.fail('Validation failed');
-            if (validationResult.errors) {
-              console.log(chalk.red('\nErrors:'));
-              validationResult.errors.forEach((e) => console.log(chalk.gray(`  ${e}`)));
-            }
-
-            results.push({
-              framework,
-              success: false,
-              outputPath,
-              error: 'Validation failed',
-            });
-            continue;
-          }
-
-          validateSpinner.succeed('Validation passed');
-
-          if (validationResult.warnings && validationResult.warnings.length > 0) {
-            console.log(chalk.yellow('\nWarnings:'));
-            validationResult.warnings.forEach((w) => console.log(chalk.gray(`  ${w}`)));
-          }
-
-          // Run full build validation
-          const buildSpinner = ora('Running build validation...').start();
-          const buildResult = await validateBuild(framework);
-
-          if (!buildResult.success) {
-            buildSpinner.fail('Build validation failed');
-            if (buildResult.errors) {
-              console.log(chalk.red('\nBuild errors:'));
-              buildResult.errors.forEach((e) => console.log(chalk.gray(`  ${e}`)));
-            }
-          } else {
-            buildSpinner.succeed('Build validation passed');
-          }
-        }
-
-        // ─────────────────────────────────────────────────────────────
-        // Step 3: Create tarball
-        // ─────────────────────────────────────────────────────────────
-        if (options.createTarball && framework === 'vue') {
-          const tarballPath = await createTarball(framework);
-          if (tarballPath) {
-            console.log(chalk.green(`✓ Tarball created: ${tarballPath}`));
-          }
-        }
-
-        // ─────────────────────────────────────────────────────────────
-        // Step 4: Integrate into example app
-        // ─────────────────────────────────────────────────────────────
-        if (options.integrateExample && framework === 'vue') {
-          const integrationResult = await integrateIntoExampleApp(
-            framework,
-            options.component,
-            outputPath,
-          );
-
-          if (integrationResult.success) {
-            console.log(chalk.green(`✓ Integrated into example app`));
-            console.log(
-              chalk.gray(`  Preview: http://localhost:5173${integrationResult.routePath}`),
-            );
-          } else {
-            console.log(chalk.yellow(`Warning: Integration failed: ${integrationResult.error}`));
-          }
-        }
-
-        results.push({ framework, success: true, outputPath });
-      } catch (error) {
-        spinner.stop();
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        console.log(chalk.red(`Failed to convert to ${framework}: ${errorMessage}`));
-        results.push({ framework, success: false, error: errorMessage });
+      } catch {
+        console.log(chalk.yellow('\nDev server stopped.'));
       }
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Summary
-    // ─────────────────────────────────────────────────────────────
-    console.log(chalk.blue('\n📊 Conversion Summary\n'));
+    console.log(chalk.blue('\n✨ All done! Thanks for using the conversion tool.\n'));
+  });
 
-    const successful = results.filter((r) => r.success);
-    const failed = results.filter((r) => !r.success);
+// ─────────────────────────────────────────────────────────────────────────────
+// PREPARE command - Generate conversion prompt for Claude Code
+// ─────────────────────────────────────────────────────────────────────────────
+program
+  .command('prepare')
+  .description('Generate a conversion prompt for Claude Code (copies to clipboard)')
+  .requiredOption(
+    '-c, --component <path>',
+    'Path to React component (relative to packages/react/src)',
+  )
+  .requiredOption('-t, --to <framework>', 'Target framework: vue, angular, svelte')
+  .action(async (options: { component: string; to: string }) => {
+    const framework = options.to.toLowerCase() as Framework;
 
-    if (successful.length > 0) {
-      console.log(chalk.green(`✓ Successful: ${successful.map((r) => r.framework).join(', ')}`));
-      for (const result of successful) {
-        if (result.outputPath) {
-          console.log(chalk.gray(`  ${result.framework}: ${result.outputPath}`));
-        }
-      }
+    if (!SUPPORTED_FRAMEWORKS.includes(framework)) {
+      console.error(
+        chalk.red(
+          `Error: Unsupported framework "${framework}". Supported: ${SUPPORTED_FRAMEWORKS.join(', ')}`,
+        ),
+      );
+      process.exit(1);
     }
 
-    if (failed.length > 0) {
-      console.log(chalk.red(`✗ Failed: ${failed.map((r) => r.framework).join(', ')}`));
-      for (const result of failed) {
-        console.log(chalk.gray(`  ${result.framework}: ${result.error}`));
-      }
+    if (framework !== 'vue') {
+      console.log(
+        chalk.yellow(
+          `\nNote: Only Vue conversion is fully implemented. ${framework} coming soon.\n`,
+        ),
+      );
     }
 
-    // ─────────────────────────────────────────────────────────────
-    // Create PR if requested
-    // ─────────────────────────────────────────────────────────────
-    if (options.pr && successful.length > 0 && !options.dryRun) {
-      console.log(chalk.blue('\n📝 Creating Pull Request...\n'));
+    console.log(chalk.blue('\n🔄 Auth0 Universal Components - Prepare Conversion\n'));
 
-      const { git, gh } = await checkGitAvailable();
-      if (!git || !gh) {
-        console.log(chalk.yellow('Warning: git or gh CLI not available, skipping PR creation'));
-      } else {
-        try {
-          const prUrl = await createPullRequest(
-            options.component,
-            successful.map((r) => r.framework),
-            successful.map((r) => r.outputPath!).filter(Boolean),
-          );
-          console.log(chalk.green(`✓ Pull request created: ${prUrl}`));
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          console.log(chalk.red(`✗ Failed to create PR: ${errorMessage}`));
-        }
-      }
-    }
+    const result = await generateConversionPrompt({
+      componentPath: options.component,
+      targetFramework: framework,
+    });
 
-    // Exit with error if any conversions failed
-    if (failed.length > 0) {
+    if (!result.success) {
+      console.error(chalk.red(`\nError: ${result.error}\n`));
       process.exit(1);
     }
   });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// VALIDATE command - Run automated validation, build, and tarball creation
+// ─────────────────────────────────────────────────────────────────────────────
 program
-  .command('batch')
-  .description('Convert multiple components at once')
-  .requiredOption(
-    '-p, --pattern <glob>',
-    'Glob pattern for components (e.g., "components/ui/*.tsx")',
-  )
-  .requiredOption('-t, --to <frameworks>', 'Target framework(s): vue, angular, svelte')
-  .option('--pr', 'Create a single pull request with all conversions', false)
-  .option('--dry-run', 'Show what would be converted without making changes', false)
-  .action(async (options) => {
-    console.log(chalk.blue('\n🔄 Batch Conversion\n'));
-    console.log(chalk.gray(`Pattern: packages/react/src/${options.pattern}`));
-    console.log(chalk.gray(`Target: ${options.to}`));
-    console.log(chalk.yellow('\nBatch conversion coming soon!\n'));
-    console.log(chalk.gray('For now, convert components one at a time:'));
-    console.log(chalk.cyan('  pnpm convert component -c <path> -t vue\n'));
+  .command('validate')
+  .description('Validate conversion, run build, and create tarball')
+  .requiredOption('-t, --to <framework>', 'Target framework: vue, angular, svelte')
+  .option('--skip-tarball', 'Skip tarball creation', false)
+  .action(async (options: { to: string; skipTarball?: boolean }) => {
+    const framework = options.to.toLowerCase() as Framework;
+
+    if (!SUPPORTED_FRAMEWORKS.includes(framework)) {
+      console.error(
+        chalk.red(
+          `Error: Unsupported framework "${framework}". Supported: ${SUPPORTED_FRAMEWORKS.join(', ')}`,
+        ),
+      );
+      process.exit(1);
+    }
+
+    console.log(chalk.blue('\n🔄 Auth0 Universal Components - Validate Conversion\n'));
+    console.log(chalk.gray(`Framework: ${framework}\n`));
+
+    let hasErrors = false;
+
+    // Step 1: Type check
+    const typeCheckSpinner = ora('Running type check...').start();
+    try {
+      const { execa } = await import('execa');
+      await execa('pnpm', ['type-check'], {
+        cwd: `packages/${framework}`,
+        reject: true,
+      });
+      typeCheckSpinner.succeed('Type check passed');
+    } catch (error) {
+      typeCheckSpinner.fail('Type check failed');
+      const stderr = (error as { stderr?: string }).stderr || '';
+      if (stderr) {
+        console.log(chalk.red('\nErrors:'));
+        console.log(chalk.gray(stderr.slice(0, 1000)));
+      }
+      hasErrors = true;
+    }
+
+    // Step 2: Build
+    const buildSpinner = ora('Running build...').start();
+    const buildResult = await validateBuild(framework);
+
+    if (!buildResult.success) {
+      buildSpinner.fail('Build failed');
+      if (buildResult.errors) {
+        console.log(chalk.red('\nBuild errors:'));
+        buildResult.errors.forEach((e) => console.log(chalk.gray(`  ${e}`)));
+      }
+      hasErrors = true;
+    } else {
+      buildSpinner.succeed('Build passed');
+    }
+
+    // Step 3: Create tarball
+    if (!options.skipTarball && !hasErrors) {
+      const tarballPath = await createTarball(framework);
+      if (tarballPath) {
+        console.log(chalk.green(`\n✓ Tarball created: ${tarballPath}`));
+      }
+    }
+
+    // Summary
+    console.log(chalk.blue('\n📊 Validation Summary\n'));
+
+    if (hasErrors) {
+      console.log(chalk.red('✗ Validation failed - fix errors and re-run\n'));
+      process.exit(1);
+    } else {
+      console.log(chalk.green('✓ All validations passed\n'));
+      console.log(chalk.gray('Next step: Integrate into example app:'));
+      console.log(chalk.cyan('  pnpm convert integrate -c <component> -t vue\n'));
+    }
   });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// INTEGRATE command - Generate integration prompt for Claude Code
+// ─────────────────────────────────────────────────────────────────────────────
+program
+  .command('integrate')
+  .description('Generate an integration prompt for Claude Code (copies to clipboard)')
+  .requiredOption(
+    '-c, --component <path>',
+    'Path to React component (relative to packages/react/src)',
+  )
+  .requiredOption('-t, --to <framework>', 'Target framework: vue, angular, svelte')
+  .action(async (options: { component: string; to: string }) => {
+    const framework = options.to.toLowerCase() as Framework;
+
+    if (!SUPPORTED_FRAMEWORKS.includes(framework)) {
+      console.error(
+        chalk.red(
+          `Error: Unsupported framework "${framework}". Supported: ${SUPPORTED_FRAMEWORKS.join(', ')}`,
+        ),
+      );
+      process.exit(1);
+    }
+
+    if (framework !== 'vue') {
+      console.log(
+        chalk.yellow(
+          `\nNote: Only Vue integration is fully implemented. ${framework} coming soon.\n`,
+        ),
+      );
+    }
+
+    console.log(chalk.blue('\n🔄 Auth0 Universal Components - Prepare Integration\n'));
+
+    const appExists = exampleAppExists(framework);
+
+    const result = await generateIntegrationPrompt({
+      componentPath: options.component,
+      targetFramework: framework,
+      exampleAppExists: appExists,
+    });
+
+    if (!result.success) {
+      console.error(chalk.red(`\nError: ${result.error}\n`));
+      process.exit(1);
+    }
+  });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIST command - List available components for conversion
+// ─────────────────────────────────────────────────────────────────────────────
 program
   .command('list')
   .description('List available components for conversion')
@@ -301,52 +445,51 @@ program
 
     for (const type of types) {
       console.log(chalk.cyan(`\n${type.charAt(0).toUpperCase() + type.slice(1)}:`));
-      console.log(chalk.gray(`  Run: pnpm convert component -c ${type}/<name> -t vue`));
+      console.log(chalk.gray(`  Run: pnpm convert run -c ${type}/<name> -t vue`));
     }
+
+    console.log(chalk.gray('\n─────────────────────────────────────────────────────'));
+    console.log(chalk.white('\nUsage:'));
+    console.log(chalk.cyan('  pnpm convert run -c <component> -t vue'));
+    console.log(chalk.gray('  Interactive guided workflow through all steps\n'));
+    console.log(chalk.gray('─────────────────────────────────────────────────────'));
 
     console.log(chalk.gray('\nExamples:'));
-    console.log(chalk.gray('  pnpm convert component -c components/ui/button.tsx -t vue'));
+    console.log(chalk.gray('  pnpm convert run -c components/ui/button.tsx -t vue'));
     console.log(
       chalk.gray(
-        '  pnpm convert component -c blocks/my-organization/organization-management/organization-details-edit.tsx -t vue',
+        '  pnpm convert run -c blocks/my-organization/organization-management/organization-details-edit.tsx -t vue',
       ),
     );
-    console.log(chalk.gray('\nUse "pnpm convert component --help" for more options.\n'));
+    console.log();
   });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// WORKFLOW command - Show workflow overview (for reference)
+// ─────────────────────────────────────────────────────────────────────────────
 program
-  .command('scaffold')
-  .description('Scaffold an example app for a framework')
-  .requiredOption('-f, --framework <framework>', 'Target framework: vue, angular, svelte')
-  .action(async (options) => {
-    const framework = options.framework.toLowerCase() as Framework;
+  .command('workflow')
+  .description('Show the complete conversion workflow')
+  .action(() => {
+    console.log(chalk.blue('\n🔄 Auth0 Universal Components - Conversion Workflow\n'));
 
-    if (!SUPPORTED_FRAMEWORKS.includes(framework)) {
-      console.error(
-        chalk.red(
-          `Error: Unsupported framework "${framework}". Supported: ${SUPPORTED_FRAMEWORKS.join(', ')}`,
-        ),
-      );
-      process.exit(1);
-    }
+    console.log(chalk.white('For an interactive guided experience, use:\n'));
+    console.log(chalk.cyan('  pnpm convert run -c <component-path> -t vue\n'));
 
-    if (exampleAppExists(framework)) {
-      console.log(chalk.yellow(`\nExample app for ${framework} already exists.\n`));
-      return;
-    }
+    console.log(chalk.gray('This will guide you through all 6 steps:'));
+    console.log(chalk.gray('  1. Generate conversion prompt → clipboard'));
+    console.log(chalk.gray('  2. Run Claude Code for conversion (you paste & guide)'));
+    console.log(chalk.gray('  3. Validate & create tarball (automated)'));
+    console.log(chalk.gray('  4. Generate integration prompt → clipboard'));
+    console.log(chalk.gray('  5. Run Claude Code for integration (you paste & guide)'));
+    console.log(chalk.gray('  6. Preview in dev server\n'));
 
-    const result = await scaffoldExampleApp(framework);
-
-    if (result.success) {
-      console.log(chalk.green(`\n✓ Example app scaffolded at ${result.exampleAppPath}\n`));
-      console.log(chalk.gray('Next steps:'));
-      console.log(chalk.gray(`  1. cd examples/${framework}`));
-      console.log(chalk.gray('  2. Copy .env.example to .env and fill in Auth0 credentials'));
-      console.log(chalk.gray('  3. pnpm dev'));
-    } else {
-      console.log(chalk.red(`\n✗ Failed to scaffold: ${result.error}\n`));
-      process.exit(1);
-    }
+    console.log(chalk.cyan('─'.repeat(60)));
+    console.log(chalk.white('\nIndividual commands (advanced):\n'));
+    console.log(chalk.gray('  pnpm convert prepare -c <path> -t vue    # Step 1'));
+    console.log(chalk.gray('  pnpm convert validate -t vue             # Step 3'));
+    console.log(chalk.gray('  pnpm convert integrate -c <path> -t vue  # Step 4'));
+    console.log(chalk.cyan('─'.repeat(60) + '\n'));
   });
 
 program.parse();
