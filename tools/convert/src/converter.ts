@@ -173,9 +173,11 @@ export async function convertComponent(
   // Invoke Claude Code for conversion
   let convertedCode: string;
   try {
-    // Use claude command directly with the prompt
-    const result = await execa('claude', ['-p', prompt, '--no-input'], {
-      timeout: 120000, // 2 minute timeout
+    // Use claude command with -p (print mode) and pass prompt via stdin
+    // This handles large prompts better than command line arguments
+    const result = await execa('claude', ['-p'], {
+      input: prompt,
+      timeout: 300000, // 5 minute timeout for complex conversions
       reject: false,
     });
 
