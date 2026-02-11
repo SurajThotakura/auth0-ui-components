@@ -2,7 +2,6 @@ import chalk from 'chalk';
 import { program } from 'commander';
 import ora from 'ora';
 
-import { convertComponent } from './converter.js';
 import { createPullRequest } from './git.js';
 import { validateOutput } from './validator.js';
 
@@ -73,24 +72,6 @@ program
           results.push({ framework, success: true });
           continue;
         }
-
-        // Perform conversion
-        const outputPath = await convertComponent(options.component, framework, {
-          verbose: options.verbose,
-        });
-
-        // Validate output
-        spinner.text = `Validating ${framework} output...`;
-        const validation = await validateOutput(outputPath, framework);
-
-        if (!validation.success) {
-          spinner.warn(`Converted to ${framework} with warnings`);
-          console.log(chalk.yellow(`  Warnings: ${validation.warnings?.join(', ')}`));
-        } else {
-          spinner.succeed(`Converted to ${framework}: ${outputPath}`);
-        }
-
-        results.push({ framework, success: true, outputPath });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         spinner.fail(`Failed to convert to ${framework}: ${errorMessage}`);

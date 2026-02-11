@@ -1,13 +1,12 @@
-import { cva, type VariantProps } from 'class-variance-authority';
-import { defineComponent, h, type PropType, type VNode, type Component } from 'vue';
+<script setup lang="ts">
+import type { PrimitiveProps } from 'reka-ui'
+import type { HTMLAttributes } from 'vue'
+import type { VariantProps } from 'class-variance-authority'
+import { cva } from 'class-variance-authority'
+import { Primitive } from 'reka-ui'
+import { cn } from '../../lib/utils'
 
-import { cn } from '../../lib/theme-utils';
-
-/**
- * Button variant styles using class-variance-authority.
- * Mirrors the React implementation for consistent styling across frameworks.
- */
-export const buttonVariants = cva(
+const buttonVariants = cva(
   "focus-visible:ring-ring aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive theme-default:active:scale-[0.99] relative box-border inline-flex shrink-0 items-center justify-center gap-2 overflow-hidden text-sm font-medium whitespace-nowrap transition-all duration-150 ease-in-out outline-none focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
@@ -33,98 +32,31 @@ export const buttonVariants = cva(
       variant: 'primary',
       size: 'default',
     },
-  },
-);
+  }
+)
 
-/**
- * Button props interface.
- */
-export interface ButtonProps extends VariantProps<typeof buttonVariants> {
-  /** Render as a different element (slot pattern) */
-  as?: boolean;
-  /** Additional CSS classes */
-  class?: string;
-  /** Button type attribute */
-  type?: 'button' | 'submit' | 'reset';
-  /** Disabled state */
-  disabled?: boolean;
+type ButtonVariants = VariantProps<typeof buttonVariants>
+
+interface Props extends PrimitiveProps {
+  variant?: ButtonVariants['variant']
+  size?: ButtonVariants['size']
+  class?: HTMLAttributes['class']
 }
 
-/**
- * Button component for Vue 3.
- *
- * A versatile button component with multiple variants and sizes.
- * Mirrors the React implementation for consistent styling across frameworks.
- *
- * @example
- * ```vue
- * <template>
- *   <Button variant="primary" size="default" @click="handleClick">
- *     Click me
- *   </Button>
- *
- *   <Button variant="outline" size="sm">
- *     Small Outline
- *   </Button>
- *
- *   <Button variant="destructive" :disabled="isLoading">
- *     Delete
- *   </Button>
- * </template>
- *
- * <script setup lang="ts">
- * import { Button } from '@auth0/universal-components-vue';
- * </script>
- * ```
- */
-export const Button = defineComponent({
-  name: 'Button',
-  props: {
-    variant: {
-      type: String as PropType<'primary' | 'outline' | 'ghost' | 'destructive' | 'link'>,
-      default: 'primary',
-    },
-    size: {
-      type: String as PropType<'default' | 'xs' | 'sm' | 'lg' | 'icon'>,
-      default: 'default',
-    },
-    as: {
-      type: Boolean,
-      default: false,
-    },
-    class: {
-      type: String,
-      default: '',
-    },
-    type: {
-      type: String as PropType<'button' | 'submit' | 'reset'>,
-      default: 'button',
-    },
-    disabled: {
-      type: Boolean,
-      default: false,
-    },
-  },
-  setup(props, { slots, attrs }) {
-    return () => {
-      const className = cn(
-        buttonVariants({ variant: props.variant, size: props.size }),
-        props.class,
-      );
+const props = withDefaults(defineProps<Props>(), {
+  as: 'button',
+  variant: 'primary',
+  size: 'default',
+})
+</script>
 
-      // If `as` is true, we render the slot content directly (similar to Radix Slot)
-      // For now, we always render a button element
-      // Full slot functionality would require additional implementation
-      return h(
-        'button',
-        {
-          ...attrs,
-          class: className,
-          type: props.type,
-          disabled: props.disabled,
-        },
-        slots.default?.(),
-      );
-    };
-  },
-});
+<template>
+  <Primitive
+    data-slot="button"
+    :as="as"
+    :as-child="asChild"
+    :class="cn(buttonVariants({ variant, size }), props.class)"
+  >
+    <slot />
+  </Primitive>
+</template>

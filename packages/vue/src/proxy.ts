@@ -1,6 +1,6 @@
-// Providers (SPA mode - uses @auth0/auth0-vue)
-export { Auth0ComponentProvider } from './providers';
-export type { Auth0ComponentProviderProps } from './providers';
+// Providers (Proxy/RWA mode - does NOT use @auth0/auth0-vue)
+export { Auth0ProxyComponentProvider } from './providers';
+export type { Auth0ProxyComponentProviderProps } from './providers';
 
 // Blocks
 export * from './blocks';
