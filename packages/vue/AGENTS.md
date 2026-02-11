@@ -848,6 +848,130 @@ There is NO error message. You must create providers before anything else.
 
 ---
 
+## UI Consistency with React Package (⚠️ CRITICAL)
+
+The Vue components MUST match the React components exactly in terms of UI/UX behavior. Below are known inconsistencies that need to be addressed:
+
+### 1. Organization Logo Field — `ImagePreviewField`
+
+**React behavior (`src/components/ui/image-preview-field.tsx`):**
+
+- Has a **preview area above the input field** (96px height)
+- Shows placeholder text: "Paste an image URL to see a preview" with an image icon
+- Shows "Invalid URL" message when URL format is invalid
+- Displays actual image preview when URL is valid
+- Preview area has `bg-muted/50` background and rounded corners
+
+**Vue current state (`BrandingDetails.vue`):**
+
+- ❌ Missing preview area entirely
+- Just a simple `TextField` with link icon
+
+**Fix required:**
+
+- Create `ImagePreviewField.vue` component in `src/components/ui/`
+- Must include preview area with empty state, invalid state, and image preview
+- Match exact styling from React version
+
+### 2. Color Picker Input — `ColorPickerInput`
+
+**React behavior (`src/components/ui/color-picker.tsx`):**
+
+- Color swatch preview is **INSIDE** the input field as `startAdornment`
+- Clickable swatch opens a full color picker popover
+- Input shows hex value (e.g., `#0059d6`)
+
+**Vue current state (`BrandingDetails.vue`):**
+
+- ❌ Color input (`<input type="color">`) is **OUTSIDE** the text field (to the left)
+- Native browser color picker instead of custom popover
+
+**Fix required:**
+
+- Create `ColorPickerInput.vue` component in `src/components/ui/`
+- Use color swatch as `startAdornment` slot inside `TextField`
+- Implement custom color picker popover (or use a Vue equivalent library)
+- Match the hex input formatting behavior from React
+
+### 3. FormActions — Discard Button Visibility
+
+**React behavior (`src/components/ui/form-actions.tsx`):**
+
+```tsx
+const isPreviousVisible = showUnsavedChanges ? showPrevious && hasUnsavedChanges : showPrevious;
+
+<Button
+  disabled={previousButtonProps.disabled || isLoading || (showUnsavedChanges && !hasUnsavedChanges)}
+  className={cn('FormActions-previous', showUnsavedChanges && !isPreviousVisible && 'invisible')}
+  aria-hidden={showUnsavedChanges && !isPreviousVisible}
+  tabIndex={isPreviousVisible ? 0 : -1}
+>
+```
+
+**Key logic:**
+
+- When `showUnsavedChanges=true`: Button is `invisible` (not `hidden`) when no unsaved changes
+- Maintains layout space even when invisible
+- Uses `aria-hidden` and `tabIndex=-1` for accessibility
+
+**Vue current state (`FormActions.vue`):**
+
+- ✅ Logic appears similar but verify exact behavior matches
+- Verify `invisible` class is applied correctly (not `hidden` which removes from layout)
+
+### 4. Unsaved Changes Indicator — Orange Dot
+
+**Required behavior:**
+
+- The "Unsaved changes" text should have an **orange dot indicator** beside it
+- Provides visual emphasis that there are pending changes
+
+**React current state:**
+
+```tsx
+<span className="text-sm text-muted-foreground">{unsavedChangesText}</span>
+```
+
+**Fix required (both React and Vue):**
+
+- Add orange dot indicator before the text
+- Example: `<span className="inline-block w-2 h-2 rounded-full bg-orange-500 mr-2" />`
+
+### 5. Mock Data for Testing — A11y Convention
+
+When testing components without backend services, use the **a11y mock organization** pattern:
+
+```typescript
+const mockOrganization = {
+  id: 'org_a11y123456789',
+  name: 'a11y-corp',
+  display_name: 'A11y Corporation',
+  branding: {
+    logo_url: 'https://cdn.auth0.com/avatars/au.png',
+    colors: {
+      primary: '#EB5424', // Auth0 orange
+      page_background: '#000000',
+    },
+  },
+};
+```
+
+This naming convention (`a11y-*`) indicates the data is for accessibility/UI testing.
+
+### UI Consistency Checklist
+
+Before merging any Vue component, verify:
+
+- [ ] **ImagePreviewField**: Has preview area with empty/invalid/loaded states
+- [ ] **ColorPickerInput**: Color swatch is inside input field, not outside
+- [ ] **FormActions**: Discard button uses `invisible` (not `hidden`) when no changes
+- [ ] **FormActions**: Unsaved changes has orange dot indicator
+- [ ] **All text**: Matches React i18n keys exactly
+- [ ] **All spacing**: Matches React Tailwind classes exactly
+- [ ] **All colors**: Uses same CSS variables as React
+
+---
+
 ## Key Files Reference
 
 | File                                       | Purpose                                                        |

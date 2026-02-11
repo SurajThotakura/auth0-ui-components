@@ -37,3 +37,4 @@ coverage/
 .cache/
 .turbo
 .vercel
+examples/vue/.env.example

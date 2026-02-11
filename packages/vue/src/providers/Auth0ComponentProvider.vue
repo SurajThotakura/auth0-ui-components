@@ -10,7 +10,7 @@ import {
   createCoreClient,
   applyStyleOverrides,
 } from '@auth0/universal-components-core'
-import { provide, ref, onMounted, reactive, shallowRef } from 'vue'
+import { provide, ref, onMounted, reactive, shallowRef, watch } from 'vue'
 
 import {
   CORE_CLIENT_KEY,
@@ -47,19 +47,41 @@ const coreClient = shallowRef<CoreClientInterface | undefined>(undefined)
 // Theme state
 const isDarkMode = ref(props.themeSettings?.mode === 'dark')
 
-// Scope manager state
+// Scope manager state - tracks registered scopes and ensured scopes separately
+const scopeRegistry = reactive<{ me: Set<string>; 'my-org': Set<string> }>({
+  me: new Set(),
+  'my-org': new Set(),
+})
+
 const ensuredScopes = reactive<{ me: string; 'my-org': string }>({
   me: '',
   'my-org': '',
 })
 
+// Version counter to trigger scope ensuring when new scopes are registered
+const scopeVersion = ref(0)
+
+const registerScopes = (api: 'me' | 'my-org', scopes: string) => {
+  if (!scopes?.trim()) return
+
+  const newScopes = scopes.split(/\s+/).map(s => s.trim()).filter(Boolean)
+  const audienceSet = scopeRegistry[api]
+  let changed = false
+
+  newScopes.forEach((scope) => {
+    if (!audienceSet.has(scope)) {
+      audienceSet.add(scope)
+      changed = true
+    }
+  })
+
+  if (changed) {
+    scopeVersion.value++
+  }
+}
+
 const scopeManager: ScopeManagerContext = {
-  registerScopes: (api: 'me' | 'my-org', scopes: string) => {
-    const currentScopes = new Set(ensuredScopes[api].split(' ').filter(Boolean))
-    const newScopes = scopes.split(' ').filter(Boolean)
-    newScopes.forEach((scope) => currentScopes.add(scope))
-    ensuredScopes[api] = Array.from(currentScopes).join(' ')
-  },
+  registerScopes,
   ensured: ensuredScopes,
 }
 
@@ -68,6 +90,29 @@ provide(CORE_CLIENT_KEY, coreClient)
 provide(THEME_KEY, { isDarkMode })
 provide(SCOPE_MANAGER_KEY, scopeManager)
 provide(TOAST_KEY, props.toastSettings)
+
+// Watch for scope version changes and ensure scopes when coreClient is ready
+watch(
+  [() => coreClient.value, scopeVersion],
+  async ([client, _version]) => {
+    if (!client) return
+
+    for (const audience of ['me', 'my-org'] as const) {
+      const scopes = Array.from(scopeRegistry[audience]).sort()
+      const scopeString = scopes.join(' ')
+
+      if (scopes.length > 0 && scopeString !== ensuredScopes[audience]) {
+        try {
+          await client.ensureScopes(scopeString, audience)
+          ensuredScopes[audience] = scopeString
+        } catch (error) {
+          console.error(`Failed to ensure scopes for ${audience}:`, error)
+        }
+      }
+    }
+  },
+  { immediate: true }
+)
 
 // Initialize core client on mount
 onMounted(async () => {
