@@ -45,7 +45,7 @@ export async function checkDashboardClientChanges(
     (c) => c.name === clientName
   )
 
-  const desiredCallbacks = (exampleType === 'next-rwa') ? [`${APP_BASE_URL}/auth/callback`] : [APP_BASE_URL]
+  const desiredCallbacks = (exampleType === 'next-rwa') ? [`${APP_BASE_URL}/auth/callback`] : [APP_BASE_URL, `${APP_BASE_URL}/connected-accounts`]
   const desiredLogoutUrls = [APP_BASE_URL]
   const desiredAllowedWebOrigins = (exampleType === 'next-rwa') ? [] : [APP_BASE_URL]
 
@@ -345,7 +345,7 @@ export async function applyDashboardClientChanges(
     }).start()
 
     try {
-      const desiredCallbacks = (exampleType === 'next-rwa') ? [`${APP_BASE_URL}/auth/callback`] : [APP_BASE_URL]
+      const desiredCallbacks = (exampleType === 'next-rwa') ? [`${APP_BASE_URL}/auth/callback`] : [APP_BASE_URL, `${APP_BASE_URL}/connected-accounts`]
       const desiredLogoutUrls = [APP_BASE_URL]
       const desiredAppType = (exampleType === 'next-rwa') ? "regular_web" : "spa"
       const desiredTokenEndpointAuthMethod = (exampleType === 'next-rwa') ? "client_secret_post" : "none"

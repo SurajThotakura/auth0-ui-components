@@ -29,6 +29,7 @@ export * from './i18n/custom-messages/my-account/user-mfa-management/user-mfa-de
 export * from './i18n/custom-messages/my-account/user-mfa-management/user-mfa-enrollment-types';
 export * from './i18n/custom-messages/my-account/user-mfa-management/user-mfa-factors-list-types';
 export * from './i18n/custom-messages/my-account/user-passkey-management/user-passkey-management-types';
+export * from './i18n/custom-messages/my-account/connect-account-button/connect-account-button-types';
 
 // i18n custom messages - my-organization idp-management
 export * from './i18n/custom-messages/my-organization/idp-management/sso-provisioning/provisioning-token-types';
@@ -140,6 +141,7 @@ export * from './services/my-account/user-mfa-management/user-mfa-management-map
 export * from './services/my-account/user-passkey-management/user-passkey-management-constants';
 export * from './services/my-account/user-passkey-management/user-passkey-management-types';
 export * from './services/my-account/user-passkey-management/user-passkey-management-utils';
+export * from './services/my-account/connected-accounts/connected-accounts-types';
 
 // MFA Step-Up services
 export {

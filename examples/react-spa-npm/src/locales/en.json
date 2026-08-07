@@ -20,10 +20,33 @@
     "my-account": "My Account",
     "multi-factor-authentication": "Multi-Factor Authentication",
     "passkeys": "Passkeys",
+    "connected-accounts": "Connected Accounts",
     "my-organization": "My Organization",
     "organization-management": "Organization Management",
     "sso-provider": "SSO Provider",
     "domain-management": "Domain Management",
     "member-management": "Members"
+  },
+  "connected-accounts": {
+    "eyebrow": "Token Vault",
+    "title": "Connected Accounts",
+    "description": "Connect an external account so this application can perform approved actions on your behalf.",
+    "google": {
+      "title": "Google Calendar",
+      "description": "Read and write calendar events · popup mode",
+      "connect": "Connect Google",
+      "connecting": "Connecting..."
+    },
+    "redirect": {
+      "title": "Need a full-page redirect?",
+      "description": "Use this option when popups are unavailable. The component returns to this page and completes the connection automatically.",
+      "provider-description": "Read and write calendar events · redirect mode",
+      "connect": "Connect with redirect"
+    },
+    "status": {
+      "success": "Google Calendar connected successfully.",
+      "cancelled": "The connection was cancelled."
+    },
+    "learn-more": "Learn about Connected Accounts"
   }
 }

@@ -385,7 +385,7 @@ export async function validateRequiredScopes(resources, domain, featureConfig) {
         warnings.push({
           api: "My Account API",
           feature: "enableMyAccount",
-          issue: `Missing ${missingMyAccountScopes.length} required MFA scope(s)`,
+          issue: `Missing ${missingMyAccountScopes.length} required My Account scope(s)`,
           missing: missingMyAccountScopes,
           available: availableMyAccountScopes,
           suggestion: "Contact Auth0 support to enable these scopes on your tenant",

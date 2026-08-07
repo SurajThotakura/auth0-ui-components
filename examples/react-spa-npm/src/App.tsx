@@ -6,6 +6,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 
 import { Navbar } from './components/nav-bar';
 import { Sidebar } from './components/side-bar';
+import ConnectedAccountsPage from './views/connected-accounts-page';
 import DomainManagementPage from './views/domain-management-page';
 import HomePage from './views/home-page';
 import MemberDetailPage from './views/member-detail-page';
@@ -69,6 +70,14 @@ function AppContent() {
             element={
               <ProtectedRoute>
                 <PasskeyPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/connected-accounts"
+            element={
+              <ProtectedRoute>
+                <ConnectedAccountsPage />
               </ProtectedRoute>
             }
           />

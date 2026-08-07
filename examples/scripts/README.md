@@ -83,10 +83,11 @@ The script creates and configures the following Auth0 resources based on your fe
 
 ### My Account Resources (if enabled)
 
-| Resource           | Details                                                           |
-| ------------------ | ----------------------------------------------------------------- |
-| **My Account API** | Resource server at `https://{domain}/me/`                         |
-| **Client Grant**   | Application authorized for My Account API scopes (MFA enrollment) |
+| Resource           | Details                                                                         |
+| ------------------ | ------------------------------------------------------------------------------- |
+| **My Account API** | Resource server at `https://{domain}/me/`                                       |
+| **Client Grant**   | Application authorized for My Account API scopes, including Connected Accounts  |
+| **SPA callback**   | Adds `http://localhost:5173/connected-accounts` for the Connected Accounts demo |
 
 ## Auth0 CLI Scopes
 

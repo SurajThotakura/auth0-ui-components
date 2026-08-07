@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
 import Layout from './components/Layout';
 import { TechProvider } from './contexts/TechContext';
+import ConnectAccountButtonDocs from './pages/ConnectAccountButtonDocs';
 import DomainTableDocs from './pages/DomainTableDocs';
 import GettingStarted from './pages/GettingStarted';
 import MemberDetailDocs from './pages/MemberDetailDocs';
@@ -24,6 +25,7 @@ function AppContent() {
         <Route path="/styling" element={<Styling />} />
         <Route path="/my-account" element={<MyAccountIntroduction />} />
         <Route path="/my-account/user-mfa-management" element={<UserMFAManagementDocs />} />
+        <Route path="/my-account/connect-account-button" element={<ConnectAccountButtonDocs />} />
         <Route path="/my-organization" element={<MyOrganizationIntroduction />} />
         <Route
           path="/my-organization/organization-details-edit"

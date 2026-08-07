@@ -1195,5 +1195,19 @@
         }
       }
     }
+  },
+  "connect_account_button": {
+    "connect": "Connecter",
+    "connecting": "Connexion en cours...",
+    "connection_name": "Connecter ${connection}",
+    "status": {
+      "connecting": "Connexion à ${title}"
+    },
+    "error": {
+      "generic": "Impossible de connecter le compte. Veuillez réessayer.",
+      "popup_blocked": "Le navigateur a bloqué la fenêtre de connexion. Autorisez les fenêtres contextuelles et réessayez.",
+      "cancelled": "La connexion a été annulée.",
+      "expired": "La session de connexion a expiré. Veuillez réessayer."
+    }
   }
 }

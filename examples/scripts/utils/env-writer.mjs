@@ -89,6 +89,9 @@ const MYACCOUNT_SCOPES = [
   "delete:me:authentication_methods",
   "update:me:authentication_methods",
   "read:me:factors",
+  "create:me:connected_accounts",
+  "read:me:connected_accounts",
+  "delete:me:connected_accounts",
 ]
 
 /**

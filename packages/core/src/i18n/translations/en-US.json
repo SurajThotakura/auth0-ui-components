@@ -1377,5 +1377,19 @@
         "confirm": "Revoke Passkey"
       }
     }
+  },
+  "connect_account_button": {
+    "connect": "Connect",
+    "connecting": "Connecting...",
+    "connection_name": "Connect ${connection}",
+    "status": {
+      "connecting": "Connecting ${title}"
+    },
+    "error": {
+      "generic": "Unable to connect account. Please try again.",
+      "popup_blocked": "The browser blocked the connection popup. Please allow popups and try again.",
+      "cancelled": "The connection was cancelled.",
+      "expired": "The connection session expired. Please try again."
+    }
   }
 }

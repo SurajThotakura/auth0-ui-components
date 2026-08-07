@@ -1347,5 +1347,19 @@
         "copy_url_failed": "招待URLのコピーに失敗しました。もう一度お試しください。"
       }
     }
+  },
+  "connect_account_button": {
+    "connect": "接続",
+    "connecting": "接続中...",
+    "connection_name": "${connection} に接続",
+    "status": {
+      "connecting": "${title} に接続中"
+    },
+    "error": {
+      "generic": "アカウントに接続できませんでした。もう一度お試しください。",
+      "popup_blocked": "ブラウザーが接続ポップアップをブロックしました。ポップアップを許可してもう一度お試しください。",
+      "cancelled": "接続がキャンセルされました。",
+      "expired": "接続セッションの有効期限が切れました。もう一度お試しください。"
+    }
   }
 }

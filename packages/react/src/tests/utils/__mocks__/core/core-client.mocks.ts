@@ -26,6 +26,12 @@ const createMockMyAccountApiService = (): CoreClientInterface['myAccountApiClien
     mfa: {
       fetchFactors: vi.fn().mockResolvedValue([]),
     },
+    connectedAccounts: {
+      create: vi.fn(),
+      complete: vi.fn(),
+      list: vi.fn(),
+      delete: vi.fn(),
+    },
   } as unknown as NonNullable<CoreClientInterface['myAccountApiClient']>;
   return service;
 };

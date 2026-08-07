@@ -82,6 +82,7 @@ export default function Layout({ children }: LayoutProps) {
       items: [
         { name: 'Overview', href: '/my-account' },
         { name: 'UserMFAManagement', href: '/my-account/user-mfa-management' },
+        { name: 'ConnectAccountButton', href: '/my-account/connect-account-button' },
       ],
     },
     {

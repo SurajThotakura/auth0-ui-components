@@ -1,4 +1,4 @@
-import { User, Building, Settings, Shield, Users, KeyRound } from 'lucide-react';
+import { Cable, User, Building, Settings, Shield, Users, KeyRound } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
@@ -37,6 +37,15 @@ export const Sidebar: React.FC = () => {
                 >
                   <KeyRound className="h-4 w-4 flex-shrink-0" />
                   <span className="truncate">{t('sidebar.passkeys')}</span>
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/connected-accounts"
+                  className="flex items-center gap-3 px-3 py-2 text-sm text-gray-700 hover:text-gray-900 hover:bg-accent/90 rounded-md dark:text-gray-300 dark:hover:text-white transition-colors"
+                >
+                  <Cable className="h-4 w-4 flex-shrink-0" />
+                  <span className="truncate">{t('sidebar.connected-accounts')}</span>
                 </Link>
               </li>
             </ul>

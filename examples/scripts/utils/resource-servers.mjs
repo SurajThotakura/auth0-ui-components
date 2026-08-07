@@ -36,7 +36,7 @@ export const MYORG_API_SCOPES = [
 "delete:my_org:memberships",
 ]
 
-// My Account API Scopes - desired scopes for MFA management
+// My Account API Scopes - desired scopes for MFA and Connected Accounts management
 // Not all tenants may have these scopes available on their My Account API
 export const MYACCOUNT_API_SCOPES_DESIRED = [
   "create:me:authentication_methods",
@@ -44,6 +44,9 @@ export const MYACCOUNT_API_SCOPES_DESIRED = [
   "delete:me:authentication_methods",
   "update:me:authentication_methods",
   "read:me:factors",
+  "create:me:connected_accounts",
+  "read:me:connected_accounts",
+  "delete:me:connected_accounts",
 ]
 
 /**

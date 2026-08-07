@@ -20,10 +20,33 @@
     "my-account": "マイアカウント",
     "multi-factor-authentication": "多要素認証",
     "passkeys": "パスキー",
+    "connected-accounts": "接続済みアカウント",
     "my-organization": "マイ組織",
     "organization-management": "組織管理",
     "sso-provider": "SSOプロバイダー",
     "domain-management": "ドメイン管理",
     "member-management": "メンバー"
+  },
+  "connected-accounts": {
+    "eyebrow": "トークンボールト",
+    "title": "接続済みアカウント",
+    "description": "承認されたアクションをこのアプリケーションが代理で実行できるように、外部アカウントを接続します。",
+    "google": {
+      "title": "Google カレンダー",
+      "description": "カレンダーイベントの読み取りと書き込み・ポップアップモード",
+      "connect": "Google に接続",
+      "connecting": "接続中..."
+    },
+    "redirect": {
+      "title": "フルページリダイレクトが必要ですか？",
+      "description": "ポップアップを利用できない場合に使用します。コンポーネントはこのページに戻り、接続を自動的に完了します。",
+      "provider-description": "カレンダーイベントの読み取りと書き込み・リダイレクトモード",
+      "connect": "リダイレクトで接続"
+    },
+    "status": {
+      "success": "Google カレンダーに正常に接続しました。",
+      "cancelled": "接続がキャンセルされました。"
+    },
+    "learn-more": "接続済みアカウントについて詳しく見る"
   }
 }
